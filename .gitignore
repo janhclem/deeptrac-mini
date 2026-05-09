@@ -1,0 +1,11 @@
+# Python
+__pycache__/
+*.py[cod]
+.env
+.venv/
+venv/
+*.npz
+*.pkl
+out/
+.vscode/
+.idea/
