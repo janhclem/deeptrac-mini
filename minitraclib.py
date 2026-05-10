@@ -22,7 +22,8 @@ class Config():
 	  ddiff0=12500,
 	  ddiff1=0.0,
 	  u0=None,
-	  m0=1.0):
+	  m0=1.0,
+	  dt_plot=2000):
 		self.lx = lx  # m
 		self.np = nump  # -
 		self.tmax = tmax  # s
@@ -35,6 +36,9 @@ class Config():
 		self.u0 = lx / (nump ** 0.5) / dt if u0 is None else u0  # m/s
 		self.m0 = m0  # kg
 		self.lmix = 2*np.sqrt(self.dmix*self.dt/self.beta) # m
+		self.dt_plot = dt_plot # s
+		if (dt_plot%dt > 0):
+			print("[WARNING] Plotting frequency must be a multiple of integration timestep.")
 
 	def show(self):
 		print("[INFO] Parameter:")

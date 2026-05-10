@@ -17,7 +17,7 @@ for s_idx in range(NENS):
 
 	# Define configurations...
 	cfg = mini.Config()
-	cfg.u0 = np.random.uniform(0,1)
+	cfg.u0 = np.random.uniform(5,20)
 	cfg.show()
 
 	# Initialize particles...
@@ -32,11 +32,12 @@ for s_idx in range(NENS):
 	for t_idx, t in tqdm(enumerate(np.arange( 0, cfg.tmax, cfg.dt))):
 
 		# Plot...
-		os.makedirs(f"{PLOT_OUT}/{s_idx}/", exist_ok=True)
-		plt.figure()
-		sct = plt.scatter( atm.x[:,0]/1000, atm.x[:,1]/1000, c=atm.m,vmin=0, vmax=1, cmap=cm.imola, s=0.1)
-		cbar = plt.colorbar(sct)
-        plt.savefig(f"{PLOT_OUT}/{s_idx}/mass_{ind:04d}.png", dpi=300)
+		if ( t%cfg.dt_plot == 0 ):
+			os.makedirs(f"{PLOT_OUT}/{s_idx}/", exist_ok=True)
+			plt.figure()
+			sct = plt.scatter( atm.x[:,0]/1000, atm.x[:,1]/1000, c=atm.m,vmin=0, vmax=1, cmap=cm.imola, s=0.1)
+			cbar = plt.colorbar(sct)
+			plt.savefig(f"{PLOT_OUT}/{s_idx}/mass_{t_idx:03d}.png", dpi=300)
 
 		# Advection...
 		vel = gyre_(atm.x)

@@ -1,4 +1,3 @@
-# Python
 __pycache__/
 *.py[cod]
 .env
@@ -11,3 +10,4 @@ out/
 .idea/
 training.log
 plot/
+*.png
