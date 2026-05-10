@@ -15,7 +15,7 @@ class DeepMix(torch.nn.Module):
 		
 		# Set input and output channels to length of edge features...
 		input_channels = data.edge_attr.shape[1]
-		out_channels = input_channels
+		out_channels = 1
 
 		# Encoder Layers...
 		self.encoder = MLP([input_channels, 32, 64], act = 'relu')
@@ -77,7 +77,7 @@ class DeepMix(torch.nn.Module):
 		    dest,  # Aggregate to target nodes
 		    dim=0,
 		    dim_size=x.size(0)
-		)
+		).squeeze()
 
 		return u, u_agg  # Return edge-level and node-level predictions
 	
