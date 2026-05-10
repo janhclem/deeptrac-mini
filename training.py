@@ -7,17 +7,24 @@ from torch_geometric.utils import k_hop_subgraph
 from torch_scatter import scatter_sum
 from glob import glob
 from tqdm import tqdm
+import csv
+from datetime import datetime
 
 import deeptraclib as deeptrac
 import minitraclib as minitrac
 
 # Training config...
-LR = 0.01
+LR = 0.000001
 
+# Log files...
+LOG_FILE = "./training.log"
+with open(LOG_FILE, 'w', newline='') as log_file:
+        writer = csv.writer(log_file)
+        writer.writerow(['time', 'mse_loss'])
 
 # Data folder...
-FILES_OUT = "./out/*/*"
-files = glob(FILES_OUT)
+FILES_DATA = "./out/*/*"
+files = list(glob(FILES_DATA))*10
 np.random.shuffle(files) # Randomize training data...
 
 # Get default config...
@@ -72,5 +79,24 @@ for f in tqdm(files):
     loss.backward() # Backward propagation...
     optimizer.step() # Make the optimization step...
 
-    print(loss)
+    # Log information for monitoring...
+    print("[INFO] loss: ", loss)
+    with open(LOG_FILE, 'a', newline='') as log_file:
+        writer = csv.writer(log_file)
+        writer.writerow([datetime.now().isoformat(), f"{loss:.6f}"])
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 

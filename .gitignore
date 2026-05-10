@@ -9,3 +9,4 @@ venv/
 out/
 .vscode/
 .idea/
+training.log
