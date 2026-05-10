@@ -80,7 +80,7 @@ for f in tqdm(files):
     optimizer.step() # Make the optimization step...
 
     # Log information for monitoring...
-    print("[INFO] loss: ", loss)
+    #print("[INFO] loss: ", loss)
     with open(LOG_FILE, 'a', newline='') as log_file:
         writer = csv.writer(log_file)
         writer.writerow([datetime.now().isoformat(), f"{loss:.6f}"])

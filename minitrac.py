@@ -3,10 +3,13 @@ from functools import partial
 from tqdm import tqdm
 import numpy as np
 import os
+import matplotlib.pylab as plt
+from cmcrameri import cm
 
 # Configure...
 DIR_OUT = "./out"
-NENS = 500
+PLOT_OUT = "./plot"
+NENS = 10
 
 # Loop over ensemble...
 for s_idx in range(NENS):
@@ -27,6 +30,13 @@ for s_idx in range(NENS):
 	kernel_ = partial(mini.kernel, beta=cfg.beta, dim=cfg.dim, d=cfg.dmix, dt=cfg.dt)
 
 	for t_idx, t in tqdm(enumerate(np.arange( 0, cfg.tmax, cfg.dt))):
+
+		# Plot...
+		os.makedirs(f"{PLOT_OUT}/{s_idx}/", exist_ok=True)
+		plt.figure()
+		sct = plt.scatter( atm.x[:,0]/1000, atm.x[:,1]/1000, c=atm.m,vmin=0, vmax=1, cmap=cm.imola, s=0.1)
+		cbar = plt.colorbar(sct)
+        plt.savefig(f"{PLOT_OUT}/{s_idx}/mass_{ind:04d}.png", dpi=300)
 
 		# Advection...
 		vel = gyre_(atm.x)
@@ -52,7 +62,5 @@ for s_idx in range(NENS):
 
 		# Write...
 		os.makedirs(f"{DIR_OUT}/{s_idx}/", exist_ok=True)
-
 		np.savez(f"{DIR_OUT}/{s_idx}/data_{t_idx:03d}.npz", x=atm.x, m=m_buffer, m_=atm.m)
-        
     

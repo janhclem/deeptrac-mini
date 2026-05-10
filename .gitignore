@@ -10,3 +10,4 @@ out/
 .vscode/
 .idea/
 training.log
+plot/
