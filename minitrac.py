@@ -1,3 +1,21 @@
+"""
+MINITRAC is a minimal example to study particle dispersion and mixing.
+    Copyright (C) 2026  Jan Clemens
+
+    This program is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    This program is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with this program.  If not, see <https://www.gnu.org/licenses/>.
+"""
+
 import minitraclib as mini
 from functools import partial
 from tqdm import tqdm
@@ -29,6 +47,7 @@ for s_idx in range(NENS):
 	gyre_ = partial(mini.gyre, lx=cfg.lx, u0=cfg.u0)
 	kernel_ = partial(mini.kernel, beta=cfg.beta, dim=cfg.dim, d=cfg.dmix, dt=cfg.dt)
 
+	print("[INFO] Start time loop.")
 	for t_idx, t in tqdm(enumerate(np.arange( 0, cfg.tmax, cfg.dt))):
 
 		# Plot...
