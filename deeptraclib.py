@@ -39,10 +39,10 @@ class DeepMix(torch.nn.Module):
 		x = data.x  # Node features
 		src, dest = data.edge_index
 		edge_attr = data.edge_attr # Edge features
-		
+
 		# Initial edge encoding...
-		e = self.encoder(edge_attr) 
-		
+		e = self.encoder(edge_attr)
+
 		# Initial node embedding (sum incoming edge features)
 		h = scatter_sum(
 		    e,
@@ -51,13 +51,13 @@ class DeepMix(torch.nn.Module):
 		    dim_size=x.shape[0]  # Number of nodes
 		)
 		h_src = h[src]
-		
+
 		# Recursive message passing (1 iteration for now)
 		for _ in range(1):
-		
+
 		    # Messages: Combine edge and node features
 		    msg = self.edge_func(self.edge_linear(e)+self.node_linear_1(h_src))
-		    
+
 		    # Message aggregation: Sum messages for each node
 		    msg_agg = scatter_sum(
 			msg,
@@ -65,7 +65,7 @@ class DeepMix(torch.nn.Module):
 			dim=0,
 			dim_size=x.shape[0]
 		    )
-		    
+
 		    # Update node and edge embeddings
 		    e = msg  # Update edge embeddings (or use a separate update)
 		    h = self.node_func(self.node_linear_2(h) + self.msg_linear(msg_agg))
@@ -99,5 +99,14 @@ def plot_graph(data_graph):
 	)
 	plt.title("Graph Visualization")
 	plt.show()	
-	
-			
+
+
+
+
+
+
+
+
+
+
+

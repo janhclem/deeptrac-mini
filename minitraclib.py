@@ -13,7 +13,7 @@ import numpy as np
 class Config():
 	def __init__(self,
 	  lx=100_000,
-	  np=10_000,
+	  nump=10_000,
 	  tmax=2000,
 	  beta=1.0,
 	  dim=2,
@@ -24,7 +24,7 @@ class Config():
 	  u0=None,
 	  m0=1.0):
 		self.lx = lx  # m
-		self.np = np  # -
+		self.np = nump  # -
 		self.tmax = tmax  # s
 		self.beta = beta  # -
 		self.dim = dim  # -
@@ -32,8 +32,9 @@ class Config():
 		self.dmix = dmix  # m**2/s
 		self.ddiff0 = ddiff0  # m**2/s
 		self.ddiff1 = ddiff1  # m**2/s
-		self.u0 = lx / (np ** 0.5) / dt if u0 is None else u0  # m/s
+		self.u0 = lx / (nump ** 0.5) / dt if u0 is None else u0  # m/s
 		self.m0 = m0  # kg
+		self.lmix = 2*np.sqrt(self.dmix*self.dt/self.beta) # m
 
 	def show(self):
 		print("[INFO] Parameter:")
