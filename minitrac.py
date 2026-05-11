@@ -48,7 +48,7 @@ for s_idx in range(NENS):
 	kernel_ = partial(mini.kernel, beta=cfg.beta, dim=cfg.dim, d=cfg.dmix, dt=cfg.dt)
 
 	print("[INFO] Start time loop.")
-	for t_idx, t in tqdm(enumerate(np.arange( 0, cfg.tmax, cfg.dt))):
+	for t_idx, t in tqdm(enumerate(np.arange( 0, cfg.tmax + cfg.dt, cfg.dt))):
 
 		# Plot...
 		if ( t%cfg.dt_plot == 0 ):
