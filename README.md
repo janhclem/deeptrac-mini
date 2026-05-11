@@ -54,7 +54,7 @@ We employ a Graph Neural Network (GNN) to replace the deterministic mixing schem
 
 ### Model Architecture
 
-**DEEPTRAC** includes **DeepMix**, a graph neural network designed to emulate the particle mass-transfer algorithm. Its architecture follows an **Encoder – Recursive Message Passing in Latent Space – Decoder** paradigm.
+**DEEPTRAC** includes **DeepMix**, a graph neural network designed to emulate the particle mass-transfer algorithm. Its architecture follows an **Encoder – Processor – Decoder** paradigm. The processor performs recursive message passing in latent space.
 
 For DeepMix, particles are structured into a graph:
 -   **Connectivity:** The graph is not fully connected. Connections between particles are restricted to a selected radius $r$, chosen to align with the mixing length. This ensures sufficient information is gathered from nearby particles without excessively increasing computational demands.
