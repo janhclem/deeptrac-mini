@@ -27,7 +27,7 @@ from cmcrameri import cm
 # Configure...
 DIR_OUT = "./out"
 PLOT_OUT = "./plot"
-NENS = 10
+NENS = 100
 
 # Loop over ensemble...
 for s_idx in range(NENS):
