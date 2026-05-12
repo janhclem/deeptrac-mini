@@ -32,7 +32,9 @@ import deeptraclib as deeptrac
 import minitraclib as minitrac
 
 # Training config...
-LR = 0.000001
+LR = 0.001
+BATCH_SIZE = 8
+NUM_ITERATIONS = 30000
 
 # Log files...
 LOG_FILE = "./training.log"
@@ -43,78 +45,100 @@ with open(LOG_FILE, 'w', newline='') as log_file:
 # Data folder...
 FILES_DATA = "./out/*/*"
 files = list(glob(FILES_DATA))*10
-np.random.shuffle(files) # Randomize training data...
+np.random.shuffle(files)
 
 # Get default config...
 cfg = minitrac.Config()
 
-# Define particle data...
+# Initialize model ONCE (outside loop)...
+# Get a sample to determine input dimensions...
+sample_data = np.load(files[0])
+atm0_sample = minitrac.Atm()
+atm1_sample = minitrac.Atm()
+atm0_sample.x = sample_data["x"]
+atm1_sample.x = sample_data["x"]
+atm0_sample.m = sample_data["m"]
+atm1_sample.m = sample_data["m_"]
+
+f_sample = np.concatenate([atm0_sample.x, atm0_sample.m[:, None]], axis=1)
+f_graph_sample = torch.from_numpy(f_sample).float()
+pos_graph_sample = torch.from_numpy(atm0_sample.x).float()
+edge_index_sample = radius_graph(pos_graph_sample, r=cfg.lmix, batch=None, loop=False)
+data_graph_sample = Data(
+    x=f_graph_sample,
+    edge_index=edge_index_sample,
+    pos=pos_graph_sample
+)
+i, j = data_graph_sample.edge_index
+edge_attr_sample = data_graph_sample.x[j] - data_graph_sample.x[i]
+norm = torch.tensor([cfg.lmix, cfg.lmix, cfg.m0])
+edge_attr_normalized_sample = (edge_attr_sample - norm/2.0)/norm
+data_graph_sample.edge_attr = edge_attr_normalized_sample.float()
+
+deepmix = deeptrac.DeepMix(data_graph_sample)
+
+# Select optimizer and loss function...
+optimizer = torch.optim.Adam(deepmix.parameters(), lr=LR, weight_decay=1e-5)
+loss_fn = nn.MSELoss()
+
+# LR scheduler...
+from torch.optim.lr_scheduler import ExponentialLR
+scheduler = ExponentialLR(optimizer, gamma=0.99995)
+
+# Define particle data (reusable)...
 atm0 = minitrac.Atm()
 atm1 = minitrac.Atm()
 
-# Run trainings loop...
-for f in tqdm(files):
+# Run training loop...
+for epoch in range(NUM_ITERATIONS // len(files) + 1):
+    np.random.shuffle(files)
+    for i in range(0, len(files), BATCH_SIZE):
+        batch_files = files[i:i+BATCH_SIZE]
+        
+        optimizer.zero_grad()
+        batch_losses = []
+        
+        for f in batch_files:
+            # Read the data...
+            data = np.load(f)
+            atm0.x = data["x"]
+            atm1.x = data["x"]
+            atm0.m = data["m"]
+            atm1.m = data["m_"]
 
-    # Read the data...
-    data = np.load(f)
-    atm0.x = data["x"]
-    atm1.x = data["x"]
-    atm0.m = data["m"]
-    atm1.m = data["m_"]
+            # Construct global graph properties...
+            f_graph = np.concatenate([atm0.x, atm0.m[:, None]], axis=1)
+            f_graph = torch.from_numpy(f_graph).float()
+            pos_graph = torch.from_numpy(atm0.x).float()
 
-    # Construct global graph properties...
-    f = np.concatenate([atm0.x, atm0.m[:, None]], axis=1)  # Node features: [x, y, mass]
-    f_graph = torch.from_numpy(f).float()
-    pos_graph = torch.from_numpy(atm0.x).float()
+            # Build global graph only connecting nearby particles...
+            edge_index = radius_graph(pos_graph, r=cfg.lmix, batch=None, loop=False)
 
-    # Build global graph only connecting nearby particles...
-    edge_index = radius_graph(pos_graph, r=cfg.lmix, batch=None, loop=False)
+            # Create global data object
+            data_graph = Data(
+                x=f_graph,
+                edge_index=edge_index,
+                pos=pos_graph
+            )
 
-    # Create global data object
-    data_graph = Data(
-        x=f_graph,          # Node features (x, y, mass)
-        edge_index=edge_index, #
-        pos=pos_graph       # Spatial positions
-    )
+            # Create the edge attributes and normalize...
+            i, j = data_graph.edge_index
+            edge_attr = data_graph.x[j] - data_graph.x[i]
+            norm = torch.tensor([cfg.lmix, cfg.lmix, cfg.m0])
+            edge_attr_normalized = (edge_attr - norm/2.0)/norm
+            data_graph.edge_attr = edge_attr_normalized.float()
 
-    # Create the edge attributes and normalize...
-    i, j = data_graph.edge_index
-    edge_attr = data_graph.x[j] - data_graph.x[i]  # Edge features: [dx, dy, dm]
-    norm = torch.tensor([cfg.lmix, cfg.lmix, cfg.m0])
-    edge_attr_normalized = (edge_attr - norm/2.0)/norm
-    data_graph.edge_attr = edge_attr_normalized.float()
-    data_graph_local = data_graph
+            # Forward propagation...
+            _, m1 = deepmix(data_graph)
+            loss = loss_fn(m1, torch.from_numpy(atm1.m).float())
+            loss.backward()
+            batch_losses.append(loss.item())
 
-    deepmix = deeptrac.DeepMix(data_graph_local)
+        optimizer.step()
+        scheduler.step()
 
-    # Select optimizer and loss function...
-    optimizer = torch.optim.Adam(deepmix.parameters(), lr=LR)
-    loss_fn = nn.MSELoss()
-
-    optimizer.zero_grad() # Reset optimizer...
-    _, m1 = deepmix(data_graph_local) # Forward propagation...
-    loss = loss_fn(m1, torch.from_numpy(atm1.m).float()) # Calculate loss...
-    loss.backward() # Backward propagation...
-    optimizer.step() # Make the optimization step...
-
-    # Log information for monitoring...
-    #print("[INFO] loss: ", loss)
-    with open(LOG_FILE, 'a', newline='') as log_file:
-        writer = csv.writer(log_file)
-        writer.writerow([datetime.now().isoformat(), f"{loss:.6f}"])
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+        # Calculate and log average loss...
+        avg_loss = sum(batch_losses) / len(batch_losses)
+        with open(LOG_FILE, 'a', newline='') as log_file:
+            writer = csv.writer(log_file)
+            writer.writerow([datetime.now().isoformat(), f"{avg_loss:.6f}"])
