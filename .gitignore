@@ -10,4 +10,3 @@ out/
 .idea/
 training.log
 plot/
-*.png
