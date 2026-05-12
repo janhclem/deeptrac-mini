@@ -14,6 +14,13 @@ The primary objectives of this project are to:
 
 ---
 
+## 0. Wind fields and Advection
+
+We use a simple, analytical double gyre wind field to setup a filamentation process on a 100kmx100km domain at 1km resolution. The initial mass is 0 kg at the bottom half of the 2d domain, and 1 at the top half of the domain. The advection is performed based on the gyres analytical functions for wind speeds and a very basic Eulerian integration scheme. Examples of initial conditions and conditions after 2000s are shown below.
+
+![Initial Conditions](https://github.com/janhclem/deeptrac-mini/blob/master/doc/figures/mass_000.png)
+![Final Conditions](https://github.com/janhclem/deeptrac-mini/blob/master/doc/figures/mass_100.png)
+
 ## 1. Numerical Mixing: Mass-Transfer Scheme
 
 This section describes the deterministic numerical scheme used to calculate mixing within a Lagrangian transport framework. Readers interested primarily in the deep learning components may skip to **Section 3**.
