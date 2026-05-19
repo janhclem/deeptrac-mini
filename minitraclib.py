@@ -32,7 +32,7 @@ class Config():
 	def __init__(self,
 	  lx=100_000,
 	  nump=10_000,
-	  tmax=2000,
+	  tmax=4000,
 	  beta=1.0,
 	  dim=2,
 	  dt=20,
@@ -41,7 +41,7 @@ class Config():
 	  ddiff1=0.0,
 	  u0=None,
 	  m0=1.0,
-	  dt_plot=2000):
+	  dt_plot=4000):
 		self.lx = lx  # m
 		self.np = nump  # -
 		self.tmax = tmax  # s

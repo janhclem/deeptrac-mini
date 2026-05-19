@@ -6,6 +6,7 @@ venv/
 *.npz
 *.pkl
 out/
+out*/
 .vscode/
 .idea/
 training.log
