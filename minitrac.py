@@ -27,7 +27,7 @@ from cmcrameri import cm
 # Configure...
 DIR_OUT = "./out"
 PLOT_OUT = "./plot"
-NENS = 300
+NENS = 1 #300
 
 # Loop over ensemble...
 for s_idx in range(NENS):
@@ -35,13 +35,16 @@ for s_idx in range(NENS):
 
 	# Define configurations...
 	cfg = mini.Config()
-	cfg.u0 = np.random.uniform(5,20)
+	cfg.u0 = 25 # np.random.uniform(5,20)
+	#cfg.dmix = 0 #
+	cfg.ddiff0 = 12500/10 #
+	cfg.dt_plot = 200
 	cfg.show()
 
 	# Initialize particles...
 	atm = mini.Atm()
 	atm.init(cfg)
-	atm.mod_mass( cfg, method="half", axis=np.random.randint(0,1), noise=True)
+	atm.mod_mass( cfg, method="half", axis=np.random.randint(0,1), noise=False)
 
 	# Fix functions...
 	gyre_ = partial(mini.gyre, lx=cfg.lx, u0=cfg.u0)
