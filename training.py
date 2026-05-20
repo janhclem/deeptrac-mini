@@ -32,9 +32,10 @@ import deeptraclib as deeptrac
 import minitraclib as minitrac
 
 # Training config...
+WEIGHTS_FILE = "./deepmix.weights"
 LR = 0.001
-BATCH_SIZE = 8
-NUM_ITERATIONS = 30000
+BATCH_SIZE = 32 # 8
+NUM_ITERATIONS = 100000
 
 # Log files...
 LOG_FILE = "./training.log"
@@ -43,14 +44,14 @@ with open(LOG_FILE, 'w', newline='') as log_file:
         writer.writerow(['time', 'mse_loss'])
 
 # Data folder...
-FILES_DATA = "./out/*/*"
-files = list(glob(FILES_DATA))*10
+FILES_DATA = "./out/*/*/*/*"
+files = list(glob(FILES_DATA))
 np.random.shuffle(files)
 
 # Get default config...
 cfg = minitrac.Config()
 
-# Initialize model ONCE (outside loop)...
+# Initialize model ones...
 # Get a sample to determine input dimensions...
 sample_data = np.load(files[0])
 atm0_sample = minitrac.Atm()
@@ -90,10 +91,11 @@ atm0 = minitrac.Atm()
 atm1 = minitrac.Atm()
 
 # Run training loop...
+min_loss = 1.0
 for epoch in range(NUM_ITERATIONS // len(files) + 1):
     np.random.shuffle(files)
-    for i in range(0, len(files), BATCH_SIZE):
-        batch_files = files[i:i+BATCH_SIZE]
+    for ind in range(0, len(files), BATCH_SIZE):
+        batch_files = files[ind:ind+BATCH_SIZE]
         
         optimizer.zero_grad()
         batch_losses = []
@@ -139,6 +141,12 @@ for epoch in range(NUM_ITERATIONS // len(files) + 1):
 
         # Calculate and log average loss...
         avg_loss = sum(batch_losses) / len(batch_losses)
+        if avg_loss < min_loss:
+        	min_loss = avg_loss
+        print("Epoch", epoch, "File", ind,"Loss", avg_loss, "Min. loss", min_loss)
         with open(LOG_FILE, 'a', newline='') as log_file:
             writer = csv.writer(log_file)
             writer.writerow([datetime.now().isoformat(), f"{avg_loss:.6f}"])
+ 
+torch.save(model.state_dict(), WEIGHTS_FILE)         
+
