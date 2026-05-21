@@ -34,8 +34,9 @@ import minitraclib as minitrac
 # Training config...
 WEIGHTS_FILE = "./deepmix.weights"
 LR = 0.001
-BATCH_SIZE = 32 # 8
-NUM_ITERATIONS = 100000
+BATCH_SIZE = 512 
+NUM_ITERATIONS = 400000
+RESTART = True
 
 # Log files...
 LOG_FILE = "./training.log"
@@ -77,6 +78,8 @@ edge_attr_normalized_sample = (edge_attr_sample - norm/2.0)/norm
 data_graph_sample.edge_attr = edge_attr_normalized_sample.float()
 
 deepmix = deeptrac.DeepMix(data_graph_sample)
+if not RESTART:
+	deepmix.load_state_dict(torch.load(WEIGHTS_FILE, weights_only=True))
 
 # Select optimizer and loss function...
 optimizer = torch.optim.Adam(deepmix.parameters(), lr=LR, weight_decay=1e-5)
@@ -92,7 +95,9 @@ atm1 = minitrac.Atm()
 
 # Run training loop...
 min_loss = 1.0
-for epoch in range(NUM_ITERATIONS // len(files) + 1):
+epochs = NUM_ITERATIONS // len(files) + 1
+print("Epochs:", epochs)
+for epoch in range(epochs):
     np.random.shuffle(files)
     for ind in range(0, len(files), BATCH_SIZE):
         batch_files = files[ind:ind+BATCH_SIZE]
@@ -131,8 +136,9 @@ for epoch in range(NUM_ITERATIONS // len(files) + 1):
             data_graph.edge_attr = edge_attr_normalized.float()
 
             # Forward propagation...
-            _, m1 = deepmix(data_graph)
-            loss = loss_fn(m1, torch.from_numpy(atm1.m).float())
+            _, dm = deepmix(data_graph)
+            dm_minitrac = torch.from_numpy(atm1.m).float()-torch.from_numpy(atm0.m).float()
+            loss = loss_fn(dm, dm_minitrac)
             loss.backward()
             batch_losses.append(loss.item())
 
@@ -148,5 +154,5 @@ for epoch in range(NUM_ITERATIONS // len(files) + 1):
             writer = csv.writer(log_file)
             writer.writerow([datetime.now().isoformat(), f"{avg_loss:.6f}"])
  
-torch.save(model.state_dict(), WEIGHTS_FILE)         
+torch.save(deepmix.state_dict(), WEIGHTS_FILE)       
 
