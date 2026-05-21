@@ -78,10 +78,7 @@ for s_idx in range(NENS):
 
 		# Mixing...
 		if (cfg.dmix > 0):
-			p = kernel_(atm.x)
-			p /= (np.sum(p, axis=1, keepdims=True) + np.sum(p, axis=1, keepdims=True))*0.5
-			dm =  atm.m[ None, :] - atm.m[:, None]
-			atm.m += cfg.beta*np.sum(dm*p, axis=1)
+			atm.m = mini.mix(atm.x, atm.m, cfg.beta, cfg.dmix, cfg.dt, cfg.dim)
 
 		# Write...
 		os.makedirs(f"{DIR_OUT}/{s_idx}/", exist_ok=True)

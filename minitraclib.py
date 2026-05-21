@@ -109,6 +109,26 @@ def kernel(x, beta, dim, d, dt):
 
     return norm_const * np.exp(exp_factor * sq_dist)
 
+def mix(x, m, beta, dmix, dt, dim):
+    """
+    Perform particle mass mixing using Gaussian kernel.
+
+    Parameters:
+        x: Particle positions (np.array, shape [n_particles, dim])
+        m: Particle masses (np.array, shape [n_particles])
+        beta: Mixing parameter
+        dmix: Mixing coefficient (m^2/s)
+        dt: Time step (s)
+        dim: Number of dimensions
+
+    Returns:
+        Updated masses (np.array, shape [n_particles])
+    """
+    p = kernel(x, beta, dim, dmix, dt)
+    p /= (np.sum(p, axis=1, keepdims=True) + np.sum(p, axis=1, keepdims=True)) * 0.5
+    dm = m[None, :] - m[:, None]
+    return m + beta * np.sum(dm * p, axis=1)
+
 def gyre(x, lx, u0):
 
     arg_x = np.pi * x[:, 0] / lx * 2

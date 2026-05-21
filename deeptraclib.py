@@ -49,7 +49,7 @@ class DeepMix(torch.nn.Module):
 		self.node_func = MLP([64, 32, 64], act = 'relu')
 
 		# Decoder Layers...
-		self.decoder = MLP([64, 32, out_channels], act = 'relu')
+		self.decoder = MLP([64, 32, out_channels])
 
 	def forward(self, data):
 

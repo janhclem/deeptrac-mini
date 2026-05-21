@@ -34,9 +34,9 @@ import minitraclib as minitrac
 # Training config...
 WEIGHTS_FILE = "./deepmix.weights"
 LR = 0.001
-BATCH_SIZE = 512 
-NUM_ITERATIONS = 400000
-RESTART = True
+BATCH_SIZE = 512
+NUM_ITERATIONS = 100000
+RESTART = False
 
 # Log files...
 LOG_FILE = "./training.log"
@@ -149,7 +149,7 @@ for epoch in range(epochs):
         avg_loss = sum(batch_losses) / len(batch_losses)
         if avg_loss < min_loss:
         	min_loss = avg_loss
-        print("Epoch", epoch, "File", ind,"Loss", avg_loss, "Min. loss", min_loss)
+        print("Epoch:", epoch, "File:", ind,"Loss:", avg_loss, "Min. loss:", min_loss, "Relative loss:", float(np.sqrt(avg_loss)/dm_minitrac.mean())*100, "%")
         with open(LOG_FILE, 'a', newline='') as log_file:
             writer = csv.writer(log_file)
             writer.writerow([datetime.now().isoformat(), f"{avg_loss:.6f}"])
