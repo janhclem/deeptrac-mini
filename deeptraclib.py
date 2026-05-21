@@ -68,10 +68,12 @@ class DeepMix(torch.nn.Module):
 		    dim=0, # index along particles/nodes
 		    dim_size=x.shape[0]  # Number of nodes
 		)
-		h_src = h[src]
 
 		# Recursive message passing (1 iteration for now)
 		for _ in range(1):
+		    
+		    # Set source node embeddings...
+		    h_src = h[src]
 
 		    # Messages: Combine edge and node features
 		    msg = self.edge_func(self.edge_linear(e)+self.node_linear_1(h_src))

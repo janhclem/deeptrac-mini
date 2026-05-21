@@ -34,7 +34,7 @@ import minitraclib as minitrac
 # Training config...
 WEIGHTS_FILE = "./deepmix.weights"
 LR = 0.001
-BATCH_SIZE = 512
+BATCH_SIZE = 8
 NUM_ITERATIONS = 100000
 RESTART = False
 
@@ -74,7 +74,7 @@ data_graph_sample = Data(
 i, j = data_graph_sample.edge_index
 edge_attr_sample = data_graph_sample.x[j] - data_graph_sample.x[i]
 norm = torch.tensor([cfg.lmix, cfg.lmix, cfg.m0])
-edge_attr_normalized_sample = (edge_attr_sample - norm/2.0)/norm
+edge_attr_normalized_sample = edge_attr_sample/norm
 data_graph_sample.edge_attr = edge_attr_normalized_sample.float()
 
 deepmix = deeptrac.DeepMix(data_graph_sample)
@@ -103,7 +103,7 @@ for epoch in range(epochs):
         batch_files = files[ind:ind+BATCH_SIZE]
         
         optimizer.zero_grad()
-        batch_losses = []
+        total_loss = 0.0
         
         for f in batch_files:
             # Read the data...
@@ -132,24 +132,27 @@ for epoch in range(epochs):
             i, j = data_graph.edge_index
             edge_attr = data_graph.x[j] - data_graph.x[i]
             norm = torch.tensor([cfg.lmix, cfg.lmix, cfg.m0])
-            edge_attr_normalized = (edge_attr - norm/2.0)/norm
+            edge_attr_normalized = edge_attr/norm
             data_graph.edge_attr = edge_attr_normalized.float()
 
             # Forward propagation...
             _, dm = deepmix(data_graph)
             dm_minitrac = torch.from_numpy(atm1.m).float()-torch.from_numpy(atm0.m).float()
             loss = loss_fn(dm, dm_minitrac)
-            loss.backward()
-            batch_losses.append(loss.item())
+            total_loss += loss
+        
+        (total_loss / len(batch_files)).backward()
 
         optimizer.step()
         scheduler.step()
 
         # Calculate and log average loss...
-        avg_loss = sum(batch_losses) / len(batch_losses)
+        avg_loss = total_loss.item() / len(batch_files)
         if avg_loss < min_loss:
         	min_loss = avg_loss
-        print("Epoch:", epoch, "File:", ind,"Loss:", avg_loss, "Min. loss:", min_loss, "Relative loss:", float(np.sqrt(avg_loss)/dm_minitrac.mean())*100, "%")
+        print("Epoch:", epoch, "File:", ind,"Loss:", np.sqrt(avg_loss), "Rel. loss:", np.sqrt(min_loss)/dm_minitrac.abs().mean().item())
+        #print(dm_minitrac.abs().mean().item(), dm_minitrac.std().item())
+
         with open(LOG_FILE, 'a', newline='') as log_file:
             writer = csv.writer(log_file)
             writer.writerow([datetime.now().isoformat(), f"{avg_loss:.6f}"])
