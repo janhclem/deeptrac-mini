@@ -36,20 +36,20 @@ class DeepMix(torch.nn.Module):
 		out_channels = 1
 
 		# Encoder Layers...
-		self.encoder = MLP([input_channels, 32, 64], act = 'relu')
+		self.encoder = MLP([input_channels, 32, 64], act='relu', norm='layer_norm')
 
 		# Edge functions...
 		self.node_linear_1 = nn.Linear(64,64)
 		self.edge_linear = nn.Linear(64,64)
-		self.edge_func = MLP([64, 32, 64], act = 'relu')
+		self.edge_func = MLP([64, 32, 64], act='relu', norm='layer_norm')
 
 		# Node functions...
 		self.node_linear_2 = nn.Linear(64,64)
 		self.msg_linear = nn.Linear(64,64)
-		self.node_func = MLP([64, 32, 64], act = 'relu')
+		self.node_func = MLP([64, 32, 64], act='relu', norm='layer_norm')
 
 		# Decoder Layers...
-		self.decoder = MLP([64, 32, out_channels])
+		self.decoder = MLP([64, 32, out_channels], norm='layer_norm')
 
 	def forward(self, data):
 

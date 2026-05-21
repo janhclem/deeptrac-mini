@@ -36,7 +36,7 @@ WEIGHTS_FILE = "./deepmix.weights"
 LR = 0.001
 BATCH_SIZE = 8
 NUM_ITERATIONS = 100000
-RESTART = False
+USE_RESTART_FILE = True
 
 # Log files...
 LOG_FILE = "./training.log"
@@ -78,16 +78,19 @@ edge_attr_normalized_sample = edge_attr_sample/norm
 data_graph_sample.edge_attr = edge_attr_normalized_sample.float()
 
 deepmix = deeptrac.DeepMix(data_graph_sample)
-if not RESTART:
+if USE_RESTART_FILE:
 	deepmix.load_state_dict(torch.load(WEIGHTS_FILE, weights_only=True))
 
 # Select optimizer and loss function...
 optimizer = torch.optim.Adam(deepmix.parameters(), lr=LR, weight_decay=1e-5)
 loss_fn = nn.MSELoss()
 
-# LR scheduler...
+# LR scheduler: decay from LR to 0.0000625 over total training steps...
 from torch.optim.lr_scheduler import ExponentialLR
-scheduler = ExponentialLR(optimizer, gamma=0.99995)
+LR_FINAL = 0.0000625
+total_steps = (NUM_ITERATIONS // len(files) + 1) * (len(files) // BATCH_SIZE)
+gamma = (LR_FINAL / LR) ** (1.0 / total_steps)
+scheduler = ExponentialLR(optimizer, gamma=gamma)
 
 # Define particle data (reusable)...
 atm0 = minitrac.Atm()
@@ -138,10 +141,12 @@ for epoch in range(epochs):
             # Forward propagation...
             _, dm = deepmix(data_graph)
             dm_minitrac = torch.from_numpy(atm1.m).float()-torch.from_numpy(atm0.m).float()
-            loss = loss_fn(dm, dm_minitrac)
+            dm_std = max(dm_minitrac.std().item(), 0.01)
+            loss = loss_fn(dm / dm_std, dm_minitrac / dm_std)
             total_loss += loss
-        
+
         (total_loss / len(batch_files)).backward()
+        torch.nn.utils.clip_grad_norm_(deepmix.parameters(), max_norm=1.0)
 
         optimizer.step()
         scheduler.step()
@@ -149,8 +154,9 @@ for epoch in range(epochs):
         # Calculate and log average loss...
         avg_loss = total_loss.item() / len(batch_files)
         if avg_loss < min_loss:
-        	min_loss = avg_loss
-        print("Epoch:", epoch, "File:", ind,"Loss:", np.sqrt(avg_loss), "Rel. loss:", np.sqrt(min_loss)/dm_minitrac.abs().mean().item())
+            min_loss = avg_loss
+            torch.save(deepmix.state_dict(), WEIGHTS_FILE)
+        print("Epoch:", epoch, "File:", ind,"Loss:", np.sqrt(avg_loss))
         #print(dm_minitrac.abs().mean().item(), dm_minitrac.std().item())
 
         with open(LOG_FILE, 'a', newline='') as log_file:
