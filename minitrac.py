@@ -78,8 +78,9 @@ for s_idx in range(NENS):
 		if (cfg.dmix > 0):
 			atm.m = mini.mix(atm.x, atm.m, cfg.beta, cfg.dmix, cfg.dt, cfg.dim, r_cutoff=3*cfg.lmix)
 		
-		if np.sum(m_buffer-atm.m) > PREC_WARN:
-			print("Mass not properly conserved")
+		mass_balance = np.abs(np.sum(m_buffer-atm.m))
+		if mass_balance > PREC_WARN:
+			print(f"Mass not properly conserved at {mass_balance} precision.")
 
 		# Write...
 		os.makedirs(f"{DIR_OUT}/{s_idx}/", exist_ok=True)

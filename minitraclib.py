@@ -91,11 +91,14 @@ class Atm():
 			print("Method not available")
 			
 		if noise:
-			if "sigma" not in method_config.keys():
-				method_config["sigma"] = 0.1
-			self.m += np.random.normal( 0, 
-						method_config["sigma"], 
-						size=self.m.shape)
+			if "a" not in method_config.keys():
+				method_config["a"] = -0.25
+			if "b" not in method_config.keys():
+				method_config["b"] =  0.25
+				
+			self.m += np.random.normal( method_config["a"], 
+						   method_config["b"], 
+						  size=self.m.shape)
 					
 def kernel(x, beta, dim, d, dt):
 
