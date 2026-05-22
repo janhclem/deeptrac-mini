@@ -1,107 +1,118 @@
 # Lagrangian Transport Modeling: Prototyping New Mixing Methods and Deep Emulators
 
-This repository contains **MINITRAC** and **DEEPTRAC**, a suite of tools designed to explore new methods for dispersion modeling and to investigate the application of deep learning within Lagrangian frameworks. It is a playground to speculate, make errors and learn.
+This repository contains **MINITRAC** and **DEEPTRAC** — a suite of tools for exploring new methods in dispersion modeling and for investigating deep learning within Lagrangian frameworks. It is intended as a research playground for experimentation and learning.
 
-- **MINITRAC** (MINImal TRAjectory Calculations): A lightweight prototype model simulating the advection, dispersion, and mixing of particles in a 2D domain.
-- **DEEPTRAC** (DEEP learning TRAjectory Calculations): A collection of neural emulators designed to replace the deterministic mixing scheme in MINITRAC with a statistical surrogate.
-
-## Overview
-
-The primary objectives of this project are to:
-1.  Explore novel methods for dispersion modeling.
-2.  Enhance intuition regarding the distinction between **mixing** (inter-particle mass transfer) and **dispersion** (sub-grid scale transport).
-3.  Investigate the integration of Graph Neural Networks (GNNs) into Lagrangian transport models.
+| Component | Description |
+|---|---|
+| **MINITRAC** | Lightweight prototype simulating advection, dispersion, and mixing of particles in a 2D domain. |
+| **DEEPTRAC** | Neural emulators designed to replace MINITRAC's deterministic mixing scheme with a learned surrogate. |
 
 ---
 
-## 0. Wind fields and Advection
+## Contents
 
-We use a simple, analytical double gyre wind field to setup a filamentation process on a 100kmx100km domain at 1km resolution. The initial mass is 0 kg at the bottom half of the 2d domain, and 1 at the top half of the domain. The advection is performed based on the gyres analytical functions for wind speeds and a very basic Eulerian integration scheme. Examples of initial conditions and conditions after 2000s are shown below.
+1. [Wind Fields and Advection](#0-wind-fields-and-advection)
+2. [Numerical Mixing: Mass-Transfer Scheme](#1-numerical-mixing-mass-transfer-scheme)
+3. [Numerical Dispersion: Random Walks](#2-numerical-dispersion-random-walks)
+4. [Emulation: Deep Graph Neural Networks](#3-emulation-deep-graph-neural-networks)
+5. [References](#references)
 
-![Advection](https://github.com/janhclem/deeptrac-mini/blob/master/doc/figures/advection_only.png)
-![Advection + Dispersion](https://github.com/janhclem/deeptrac-mini/blob/master/doc/figures/advection_dispersion.png)
-![Advection + Mixing](https://github.com/janhclem/deeptrac-mini/blob/master/doc/figures/advection_mixing.png)
-![Advection + Dispersion + Mixing](https://github.com/janhclem/deeptrac-mini/blob/master/doc/figures/advection_mixing_dispersion.png)
+---
+
+## 0. Wind Fields and Advection
+
+A simple analytical double-gyre wind field drives filamentation on a 100 km × 100 km domain. Particles are advected using the gyre's analytical velocity functions with a first-order Euler integration scheme. The examples below show the initial state and state after 2000 s for different physics combinations.
+
+| Setup | Figure |
+|---|---|
+| Advection only | ![Advection](https://github.com/janhclem/deeptrac-mini/blob/master/doc/figures/advection_only.png) |
+| Advection + Dispersion | ![Advection + Dispersion](https://github.com/janhclem/deeptrac-mini/blob/master/doc/figures/advection_dispersion.png) |
+| Advection + Mixing | ![Advection + Mixing](https://github.com/janhclem/deeptrac-mini/blob/master/doc/figures/advection_mixing.png) |
+| Advection + Dispersion + Mixing | ![Advection + Dispersion + Mixing](https://github.com/janhclem/deeptrac-mini/blob/master/doc/figures/advection_mixing_dispersion.png) |
+
+---
 
 ## 1. Numerical Mixing: Mass-Transfer Scheme
 
-This section describes the deterministic numerical scheme used to calculate mixing within a Lagrangian transport framework. Readers interested primarily in the deep learning components may skip to **Section 3**.
+Particle-mass-transfer algorithms calculate inter-particle mixing within a Lagrangian transport framework. They approximate the Eulerian advection-diffusion-reaction equation without introducing artificial numerical diffusion and, when operated in a numerically stable regime, are strictly mass-conserving. The mixing kernels used between particles are identical to the kernel representations found in **Smoothed Particle Hydrodynamics (SPH)**.
 
-Particle-mass-transfer algorithms are widely used in hydrology to calculate inter-particle mixing. These algorithms approximate the Eulerian advection-diffusion-reaction equation without introducing artificial numerical diffusion. When operated in a numerically stable regime, they are strictly mass-conserving. Furthermore, the mixing kernels employed between particles are identical to the kernel representations of fields found in **Smoothed Particle Hydrodynamics (SPH)**, a method that models fluid dynamics entirely within a Lagrangian framework.
+These algorithms have been successfully parallelized and domain-decomposed (Benson et al.). The kernel used here is a **Gaussian**, motivated by the **Green's function** of the diffusion equation: an injected particle begins as a delta-function pulse and disperses into a Gaussian distribution over a sufficiently small, yet non-negligible, time step.
 
-These algorithms have been successfully parallelized and domain-decomposed (e.g., Benson et al.). The kernel used in this implementation is a **Gaussian function**, strongly motivated by analyzing the **Green's function** of an injected particle. Such a particle begins as a delta-function-shaped pulse and subsequently disperses into a Gaussian distribution over a sufficiently small, yet non-negligible, time step.
-
-While the kernel can theoretically be formulated anisotropically to encode varying mixing strengths across different directions and locations, this implementation assumes **isotropy and homogeneity** of the diffusion coefficient.
+This implementation assumes **isotropy and homogeneity** of the diffusion coefficient. In principle the kernel can be formulated anisotropically to encode spatially varying mixing strengths.
 
 ### Algorithm
 
-Consider first the problem of a single probe particle. This particle possesses no weight or drag; rather, it serves as an idealized representative of a specific area within the atmosphere. In a Lagrangian numerical model, uncertainty arises from two primary sources:
-1.  Unresolved sub-grid scale winds.
-2.  The representation of a finite area by a single particle.
+Each particle is an idealized representative of a finite atmospheric area. Uncertainty arises from two sources:
+1. Unresolved sub-grid scale winds.
+2. Representing a finite area with a single particle.
 
-In a perfect calculation, each particle represents a point in a continuum, transported intact around the atmosphere. If we construct a probability function representing the particle's position, it would be a delta function moving through the domain. However, such perfectly traceable entities exist only if we were tracking inert molecules throughout the atmosphere—a physical impossibility for our purposes. Consequently, we must treat particles as parcels with a volume large enough to satisfy the **thermodynamic limit**. Interestingly, a parcel large enough for the thermodynamic limit is also susceptible to disintegration. This disintegration must be modeled.
+In the thermodynamic limit, a parcel large enough to be thermodynamically meaningful is also susceptible to disintegration — this process must be modeled. The Green's function of diffusion over a small time step is a Gaussian; the parcel "disintegrates" and its mass mixes into neighboring particles. When multiple particles are present, their respective Gaussian distributions overlap, quantifying mixing in a rigorous manner.
 
-To achieve this, we examine the dispersion of a delta pulse under diffusion over a small time step. The corresponding Green's function is a Gaussian. Intuitively, the parcel "disintegrates" over a time step, and its mass mixes across different regions. When incorporating multiple particles, their respective Gaussian functions may overlap, mathematically quantifying the mixing between them in a rigorous manner.
-
-> **Note:** Further details on the particle mass-transfer algorithm can be found in the publication by **Benson et al.**
+> **Further reading:** Benson et al. (2024) describe the algorithm and its parallelization in detail.
 
 ---
 
 ## 2. Numerical Dispersion: Random Walks
 
-While the mixing scheme parameterizes the disintegration process of particles, the **random walk** component parameterizes sub-grid scale wind effects. On limited-resolution grids, even for idealized parcels that would not physically "disintegrate," we must account for uncertainty in the flow field. Since the exact details of the velocity field are unknown at sub-grid scales, we calculate statistics over the possible trajectories that parcels may follow.
+While the mixing scheme parameterizes parcel disintegration, the **random walk** component parameterizes sub-grid scale wind effects. On limited-resolution grids, exact details of the velocity field are unknown at sub-grid scales; we therefore calculate statistics over the possible trajectories parcels may follow.
 
-This same principle applies to disintegrated parcels. The sub-grid scale diffusion can be understood as an additional correction to the center of mass of the Gaussian distribution. In other words, each random walk step effectively shifts the mean value of the Gaussian curves associated with individual particles.
+Sub-grid scale diffusion acts as an additional correction to the center of mass of each particle's Gaussian distribution. Each random walk step effectively shifts the mean of the Gaussian associated with an individual particle.
 
-> **Future Work:** These schemes could be enhanced by using statistical representations of sub-grid scale winds or super-resolution techniques. Both features are potentially provided by AI-driven dynamic models, such as **AtmoRep**.
+> **Future work:** Statistical representations of sub-grid scale winds or super-resolution techniques (e.g., AI-driven models such as **AtmoRep**) could improve these schemes.
 
 ---
 
 ## 3. Emulation: Deep Graph Neural Networks
 
-We employ a Graph Neural Network (GNN) to replace the deterministic mixing scheme with a statistical surrogate. This approach introduces the application of GNNs within a Lagrangian modeling framework.
+**DEEPTRAC** uses a Graph Neural Network (GNN) to replace the deterministic mixing scheme with a learned statistical surrogate, introducing GNNs into a Lagrangian modeling framework.
 
 ### Model Architecture
 
-**DEEPTRAC** includes **DeepMix**, a graph neural network designed to emulate the particle mass-transfer algorithm. Its architecture follows an **Encoder – Processor – Decoder** paradigm. The processor performs recursive message passing in latent space.
+**DeepMix** follows an **Encoder–Processor–Decoder** paradigm with recursive message passing in latent space.
 
-For DeepMix, particles are structured into a graph:
--   **Connectivity:** The graph is not fully connected. Connections between particles are restricted to a selected radius $r$, chosen to align with the mixing length. This ensures sufficient information is gathered from nearby particles without excessively increasing computational demands.
--   **Edge Features:** Mass differences and coordinate differences between neighboring particles.
--   **Objective:** Calculate the updated mass for every particle in the graph. Instead of directly calculating the updated mass DeepMix predicts the total mass change per node.
+Particles are structured as a graph:
+- **Connectivity:** Edges connect particles within a radius $r$ aligned to the mixing length $l_\mathrm{mix}$, balancing local information gathering against computational cost.
+- **Edge features:** Normalized coordinate differences $(dx, dy)$ and mass difference $dm$, scaled by $(l_\mathrm{mix},\, l_\mathrm{mix},\, m_0)$.
+- **Objective:** Predict the net mass change $\Delta m$ per particle.
 
-**Processing Steps:**
-1.  **Embedding:** Graph edge features (3D) are embedded into a higher-dimensional latent space (64D). This space enables DeepMix to learn the complexities of the mixing kernel.
-2.  **Message Passing:** Using the latent space, DeepMix recursively updates edge and node features via the aggregation of messages passed between nodes. In this implementation, we utilize a single recursion step.
-3.  **Decoding:** The model uses a decoder to project features from the latent space back onto the graph edges and nodes.
+**Processing steps:**
 
-Training is performed using model simulations generated by MINITRAC. Notably, DeepMix could also incorporate observational data into the mixing process, allowing it to learn more complex mixing kernels. We utilize the **Adam optimizer** and **Mean Squared Error (MSE)** as the loss function, adhering to the setup described by **Li et al.**
+| Step | Description |
+|---|---|
+| Embedding | Edge features (3D) are encoded into a 64D latent space via an MLP with LayerNorm. |
+| Message passing | A single round of edge–node message passing updates latent edge and node embeddings. |
+| Decoding | Edge embeddings are decoded to scalar mass-exchange values and aggregated per node. |
 
-### Model Training Status
+### Training Setup
 
-> ⚠️ **Current Status:** Model training is not yet functioning optimally. Batch sizes, learning rates, and potentially the architecture itself may require further adjustment.
+Training data are generated by MINITRAC ensemble runs. Targets are normalized by the global standard deviation of $\Delta m$ (estimated from the first 200 training files) before computing the loss, following the normalization approach of Li et al.
 
-Lie et al use 10k to 30k iterations. 
+| Hyperparameter | Value |
+|---|---|
+| Optimizer | Adam (weight decay 10⁻⁵) |
+| Initial learning rate | 3 × 10⁻⁴ |
+| Final learning rate | 6.25 × 10⁻⁵ |
+| LR schedule | Exponential decay |
+| Batch size | 8 |
+| Iterations | ~100,000 |
+| Loss function | Huber loss |
+| Gradient clipping | max norm = 1.0 |
+| Normalization | LayerNorm after each MLP layer; inputs/outputs normalized to zero mean and unit std |
 
-Also they add LayerNorm after each layer. Inout and output are also normed to have a mean zero and stdev 1.
+### Results
 
-Learning rate starts at 0.001 and decays towards 0.0000625. Batch size is 8 with 30000 iterations or 1 with 100 000 iterations.
-
+DeepMix achieves a **normalized RMSE of 0.2** after approximately 100,000 training iterations on MINITRAC-generated ensemble data.
 
 ### Application
 
-DeepMix aims to replace the numerical mixing scheme in small-scale simulations equivalent to MINITRAC.
-
-It is important to note that this implementation utilizes an **edge-focused GNN**. Future iterations could explore **node-focused GNNs** to potentially replace the advection scheme as well. Such an approach could enforce mass conservation (via an additional loss function) as a bias correction to interpolation errors inherent in common Lagrangian advection schemes.
+DeepMix is designed to replace the numerical mixing scheme in simulations equivalent to MINITRAC. This implementation is **edge-focused**. Future work could explore **node-focused GNNs** to replace the advection scheme as well — an approach that could additionally enforce mass conservation as a bias correction to interpolation errors inherent in Lagrangian advection.
 
 ---
 
 ## References
 
-1.  **Li, Z., & Barati Farimani, A.** (2022). Graph neural network-accelerated Lagrangian fluid simulation. *Computers & Graphics*, 103, 201–211. ISSN 0097-8493.  
-    [DOI: 10.1016/j.cag.2022.02.004](https://doi.org/10.1016/j.cag.2022.02.004)
+1. **Li, Z., & Barati Farimani, A.** (2022). Graph neural network-accelerated Lagrangian fluid simulation. *Computers & Graphics*, 103, 201–211.  
+   [DOI: 10.1016/j.cag.2022.02.004](https://doi.org/10.1016/j.cag.2022.02.004)
 
-2.  **Benson, D. A., Pribec, I., Engdahl, N. B., Pankavich, S., & Schauer, L.** (2024). Parallelization of particle-mass-transfer algorithms on shared-memory, multi-core CPUs. *Advances in Water Resources*, 193, 104818. ISSN 0309-1708.  
-    [DOI: 10.1016/j.advwatres.2024.104818](https://doi.org/10.1016/j.advwatres.2024.104818)
-
-
+2. **Benson, D. A., Pribec, I., Engdahl, N. B., Pankavich, S., & Schauer, L.** (2024). Parallelization of particle-mass-transfer algorithms on shared-memory, multi-core CPUs. *Advances in Water Resources*, 193, 104818.  
+   [DOI: 10.1016/j.advwatres.2024.104818](https://doi.org/10.1016/j.advwatres.2024.104818)

@@ -16,168 +16,147 @@ DEEPTRAC is a minimal example to study particle dispersion and mixing.
     along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """
 
-import torch
-import numpy as np
-from torch import nn
-from torch_geometric.data import Data
-from torch_geometric.nn import radius_graph
-from torch_geometric.utils import k_hop_subgraph
-from torch_scatter import scatter_sum
-from glob import glob
-from tqdm import tqdm
 import csv
 from datetime import datetime
+from glob import glob
+
+import numpy as np
+import torch
+from torch import nn
+from torch.optim.lr_scheduler import ExponentialLR
+from torch_geometric.data import Data
+from torch_geometric.nn import radius_graph
 
 import deeptraclib as deeptrac
 import minitraclib as minitrac
 
-# Training config...
-WEIGHTS_FILE = "./deepmix.weights"
-LR = 0.0003#0.001
-BATCH_SIZE = 8
-NUM_ITERATIONS = 100000
-USE_RESTART_FILE = False
-LAMBDA = 0 # 0.001 
+# ---------------------------------------------------------------------------
+# Training configuration
+# ---------------------------------------------------------------------------
+WEIGHTS_FILE    = "./deepmix.weights"
+LR              = 0.0003
+LR_FINAL        = 0.0000625
+BATCH_SIZE      = 8
+NUM_ITERATIONS  = 100_000
+USE_RESTART     = False
+LAMBDA          = 0.0   # mass-conservation penalty weight
 
-# Log files...
-LOG_FILE = "./training.log"
+LOG_FILE        = "./training.log"
+FILES_DATA      = "./out/*/*/*/*"
+
+# ---------------------------------------------------------------------------
+# Logging
+# ---------------------------------------------------------------------------
 with open(LOG_FILE, 'w', newline='') as log_file:
-        writer = csv.writer(log_file)
-        writer.writerow(['time', 'mse_loss'])
+    writer = csv.writer(log_file)
+    writer.writerow(['time', 'mse_loss'])
 
-# Data folder...
-FILES_DATA = "./out/*/*/*/*"
+# ---------------------------------------------------------------------------
+# Data loading
+# ---------------------------------------------------------------------------
 files = list(glob(FILES_DATA))
 np.random.shuffle(files)
 
-# Get default config...
 cfg = minitrac.Config()
 
-# Initialize model ones...
-# Get a sample to determine input dimensions...
+# ---------------------------------------------------------------------------
+# Build a sample graph to infer model input dimensions
+# ---------------------------------------------------------------------------
 sample_data = np.load(files[0])
 atm0_sample = minitrac.Atm()
-atm1_sample = minitrac.Atm()
 atm0_sample.x = sample_data["x"]
-atm1_sample.x = sample_data["x"]
 atm0_sample.m = sample_data["m"]
-atm1_sample.m = sample_data["m_"]
 
-f_sample = np.concatenate([atm0_sample.x, atm0_sample.m[:, None]], axis=1)
-f_graph_sample = torch.from_numpy(f_sample).float()
-pos_graph_sample = torch.from_numpy(atm0_sample.x).float()
-edge_index_sample = radius_graph(pos_graph_sample, r=cfg.lmix, batch=None, loop=False)
-data_graph_sample = Data(
-    x=f_graph_sample,
-    edge_index=edge_index_sample,
-    pos=pos_graph_sample
-)
-i, j = data_graph_sample.edge_index
-edge_attr_sample = data_graph_sample.x[j] - data_graph_sample.x[i]
-norm = torch.tensor([cfg.lmix, cfg.lmix, cfg.m0])
-edge_attr_normalized_sample = edge_attr_sample/norm
-data_graph_sample.edge_attr = edge_attr_normalized_sample.float()
+f_sample      = np.concatenate([atm0_sample.x, atm0_sample.m[:, None]], axis=1)
+f_graph       = torch.from_numpy(f_sample).float()
+pos_graph     = torch.from_numpy(atm0_sample.x).float()
+edge_index    = radius_graph(pos_graph, r=cfg.lmix, batch=None, loop=False)
+data_graph    = Data(x=f_graph, edge_index=edge_index, pos=pos_graph)
+i, j          = data_graph.edge_index
+norm          = torch.tensor([cfg.lmix, cfg.lmix, cfg.m0])
+data_graph.edge_attr = ((data_graph.x[j] - data_graph.x[i]) / norm).float()
 
-deepmix = deeptrac.DeepMix(data_graph_sample)
-if USE_RESTART_FILE:
-	deepmix.load_state_dict(torch.load(WEIGHTS_FILE, weights_only=True))
+# ---------------------------------------------------------------------------
+# Model, optimizer, scheduler
+# ---------------------------------------------------------------------------
+deepmix = deeptrac.DeepMix(data_graph)
+if USE_RESTART:
+    deepmix.load_state_dict(torch.load(WEIGHTS_FILE, weights_only=True))
 
-# Select optimizer and loss function...
 optimizer = torch.optim.Adam(deepmix.parameters(), lr=LR, weight_decay=1e-5)
-loss_fn = nn.HuberLoss()
+loss_fn   = nn.HuberLoss()
 
-# LR scheduler: decay from LR to 0.0000625 over total training steps...
-from torch.optim.lr_scheduler import ExponentialLR
-LR_FINAL = 0.0000625
-total_steps = (NUM_ITERATIONS // len(files) + 1) * (len(files) // BATCH_SIZE)
-gamma = (LR_FINAL / LR) ** (1.0 / total_steps)
-scheduler = ExponentialLR(optimizer, gamma=gamma)
+epochs      = NUM_ITERATIONS // len(files) + 1
+total_steps = epochs * (len(files) // BATCH_SIZE)
+gamma       = (LR_FINAL / LR) ** (1.0 / total_steps)
+scheduler   = ExponentialLR(optimizer, gamma=gamma)
 
-# Compute global dm_std from a sample of training files...
-_dm_samples = []
-for _f in files[:200]:
-    _d = np.load(_f)
-    _dm_samples.append(_d["m_"] - _d["m"])
-DM_STD = float(np.concatenate(_dm_samples).std())
-print(f"Global dm_std: {DM_STD:.6f}")
+# ---------------------------------------------------------------------------
+# Global dm normalization constant (estimated from a data sample)
+# ---------------------------------------------------------------------------
+dm_samples = [np.load(f)["m_"] - np.load(f)["m"] for f in files[:200]]
+DM_STD = float(np.concatenate(dm_samples).std())
+print(f"[INFO] Global dm_std: {DM_STD:.6f}")
 
-# Define particle data (reusable)...
+# ---------------------------------------------------------------------------
+# Training loop
+# ---------------------------------------------------------------------------
 atm0 = minitrac.Atm()
 atm1 = minitrac.Atm()
-
-# Run training loop...
 min_loss = 1.0
-epochs = NUM_ITERATIONS // len(files) + 1
-print("Epochs:", epochs)
+
+print(f"[INFO] Training for {epochs} epochs over {len(files)} files (batch size {BATCH_SIZE}).")
+
 for epoch in range(epochs):
     np.random.shuffle(files)
+
     for ind in range(0, len(files), BATCH_SIZE):
-        batch_files = files[ind:ind+BATCH_SIZE]
-        
+        batch_files = files[ind:ind + BATCH_SIZE]
+
         optimizer.zero_grad()
         total_loss = 0.0
-        
-        total_mse = 0.0
+        total_mse  = 0.0
+
         for f in batch_files:
-            # Read the data...
             data = np.load(f)
             atm0.x = data["x"]
             atm1.x = data["x"]
             atm0.m = data["m"]
             atm1.m = data["m_"]
 
-            # Construct global graph properties...
-            f_graph = np.concatenate([atm0.x, atm0.m[:, None]], axis=1)
-            f_graph = torch.from_numpy(f_graph).float()
-            pos_graph = torch.from_numpy(atm0.x).float()
-
-            # Build global graph only connecting nearby particles...
+            f_graph    = torch.from_numpy(np.concatenate([atm0.x, atm0.m[:, None]], axis=1)).float()
+            pos_graph  = torch.from_numpy(atm0.x).float()
             edge_index = radius_graph(pos_graph, r=cfg.lmix, batch=None, loop=False)
+            data_graph = Data(x=f_graph, edge_index=edge_index, pos=pos_graph)
 
-            # Create global data object
-            data_graph = Data(
-                x=f_graph,
-                edge_index=edge_index,
-                pos=pos_graph
-            )
-
-            # Create the edge attributes and normalize...
             i, j = data_graph.edge_index
-            edge_attr = data_graph.x[j] - data_graph.x[i]
             norm = torch.tensor([cfg.lmix, cfg.lmix, cfg.m0])
-            edge_attr_normalized = edge_attr/norm
-            data_graph.edge_attr = edge_attr_normalized.float()
+            data_graph.edge_attr = ((data_graph.x[j] - data_graph.x[i]) / norm).float()
 
-            # Forward propagation...
             _, dm = deepmix(data_graph)
-            dm_minitrac = torch.from_numpy(atm1.m).float()-torch.from_numpy(atm0.m).float()
-            loss = loss_fn(dm / DM_STD, dm_minitrac / DM_STD)
-            # Mass conservation penalty
+            dm_target = torch.from_numpy(atm1.m).float() - torch.from_numpy(atm0.m).float()
+
+            loss = loss_fn(dm / DM_STD, dm_target / DM_STD)
             mass_penalty = (dm.sum() / DM_STD) ** 2
             total_loss += loss + LAMBDA * mass_penalty
-            total_mse += loss.item()
-            
-            #if (loss >= 0.6):
-            #	print(f)
+            total_mse  += loss.item()
 
         (total_loss / len(batch_files)).backward()
         torch.nn.utils.clip_grad_norm_(deepmix.parameters(), max_norm=1.0)
-
         optimizer.step()
         scheduler.step()
-        
 
-        # Calculate and log average MSE (without penalty) for NRMSE...
         avg_loss = total_mse / len(batch_files)
+        nrmse    = np.sqrt(avg_loss)
         if avg_loss < min_loss:
             min_loss = avg_loss
             torch.save(deepmix.state_dict(), WEIGHTS_FILE)
-        print("Epoch:", epoch, "File:", ind,"Loss:", np.sqrt(avg_loss))
-        #print(dm_minitrac.abs().mean().item(), dm_minitrac.std().item())
+
+        print(f"Epoch {epoch:04d}  file {ind:06d}  NRMSE {nrmse:.4f}")
 
         with open(LOG_FILE, 'a', newline='') as log_file:
             writer = csv.writer(log_file)
             writer.writerow([datetime.now().isoformat(), f"{avg_loss:.6f}"])
- 
-torch.save(deepmix.state_dict(), WEIGHTS_FILE)       
 
+torch.save(deepmix.state_dict(), WEIGHTS_FILE)
+print(f"[INFO] Training complete. Best NRMSE: {np.sqrt(min_loss):.4f}")

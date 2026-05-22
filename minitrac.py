@@ -24,65 +24,59 @@ import os
 import matplotlib.pylab as plt
 from cmcrameri import cm
 
-# Configure...
 DIR_OUT = "./out"
 PLOT_OUT = "./plot"
-NENS = 100
+NENS = 999
 PREC_WARN = 1e-14
 
-# Loop over ensemble...
 for s_idx in range(NENS):
-	print(f"[INFO] Scenario {s_idx} of {NENS}")
+    print(f"[INFO] Starting scenario {s_idx} of {NENS}")
 
-	# Define configurations...
-	cfg = mini.Config()
-	cfg.u0 = np.random.uniform(5,25)
-	cfg.show()
+    cfg = mini.Config()
+    cfg.dt_plot = 200
+    cfg.u0 = np.random.uniform(5, 25)
+    cfg.show()
 
-	# Initialize particles...
-	atm = mini.Atm()
-	atm.init(cfg)
-	atm.mod_mass( cfg, method="half", axis=np.random.randint(0,2), noise=True)
+    atm = mini.Atm()
+    atm.init(cfg)
+    atm.init_mass_gauss(cfg)
 
-	# Fix functions...
-	gyre_ = partial(mini.gyre, lx=cfg.lx, u0=cfg.u0)
-	kernel_ = partial(mini.kernel, beta=cfg.beta, dim=cfg.dim, d=cfg.dmix, dt=cfg.dt)
+    gyre_ = partial(mini.gyre, lx=cfg.lx, u0=cfg.u0)
+    kernel_ = partial(mini.kernel, beta=cfg.beta, dim=cfg.dim, d=cfg.dmix, dt=cfg.dt)
 
-	print("[INFO] Start time loop.")
-	for t_idx, t in tqdm(enumerate(np.arange( 0, cfg.tmax + cfg.dt, cfg.dt))):
+    print("[INFO] Starting time loop.")
+    for t_idx, t in tqdm(enumerate(np.arange(0, cfg.tmax + cfg.dt, cfg.dt))):
 
-		# Plot...
-		if ( t%cfg.dt_plot == 0 ):
-			os.makedirs(f"{PLOT_OUT}/{s_idx}/", exist_ok=True)
-			plt.figure()
-			sct = plt.scatter( atm.x[:,0]/1000, atm.x[:,1]/1000, c=atm.m,vmin=0, vmax=1, cmap=cm.imola, s=0.1)
-			cbar = plt.colorbar(sct)
-			plt.savefig(f"{PLOT_OUT}/{s_idx}/mass_{t_idx:03d}.png", dpi=300)
+        if t % cfg.dt_plot == 0:
+            os.makedirs(f"{PLOT_OUT}/{s_idx}/", exist_ok=True)
+            plt.figure()
+            sct = plt.scatter(atm.x[:, 0] / 1000, atm.x[:, 1] / 1000,
+                              c=atm.m, vmin=0, vmax=1, cmap=cm.imola, s=0.1)
+            plt.colorbar(sct)
+            plt.savefig(f"{PLOT_OUT}/{s_idx}/mass_{t_idx:03d}.png", dpi=300)
+            plt.close()
 
-		# Advection...
-		vel = gyre_(atm.x)
-		atm.x += vel*cfg.dt
+        # Advection
+        vel = gyre_(atm.x)
+        atm.x += vel * cfg.dt
 
-		# Diffusion...
-		# 1th order...
-		atm.x += 2*np.sqrt(cfg.ddiff0*cfg.dt)*np.random.normal(0,1,size=atm.x.shape)
-		# 2d order...
+        # First-order dispersion (random walk)
+        atm.x += 2 * np.sqrt(cfg.ddiff0 * cfg.dt) * np.random.normal(0, 1, size=atm.x.shape)
 
-		# Enforce boundaries...
-		atm.x = np.clip(atm.x, a_min=0, a_max = cfg.lx)
+        # Enforce domain boundaries
+        atm.x = np.clip(atm.x, a_min=0, a_max=cfg.lx)
 
-		# Buffer for saving...
-		m_buffer = atm.m.copy()
+        m_buffer = atm.m.copy()
 
-		# Mixing...
-		if (cfg.dmix > 0):
-			atm.m = mini.mix(atm.x, atm.m, cfg.beta, cfg.dmix, cfg.dt, cfg.dim, r_cutoff=3*cfg.lmix)
-		
-		mass_balance = np.abs(np.sum(m_buffer-atm.m))
-		if mass_balance > PREC_WARN:
-			print(f"Mass not properly conserved at {mass_balance} precision.")
+        # Mixing
+        if cfg.dmix > 0:
+            atm.m = mini.mix(atm.x, atm.m, cfg.beta, cfg.dmix, cfg.dt, cfg.dim,
+                             r_cutoff=3 * cfg.lmix)
 
-		# Write...
-		os.makedirs(f"{DIR_OUT}/{s_idx}/", exist_ok=True)
-		np.savez(f"{DIR_OUT}/{s_idx}/data_{t_idx:03d}.npz", x=atm.x, m=m_buffer, m_=atm.m)
-    
+        mass_balance = np.abs(np.sum(m_buffer - atm.m))
+        if mass_balance > PREC_WARN:
+            print(f"[WARNING] Mass not conserved: residual = {mass_balance:.2e}")
+
+        os.makedirs(f"{DIR_OUT}/{s_idx}/", exist_ok=True)
+        np.savez(f"{DIR_OUT}/{s_idx}/data_{t_idx:03d}.npz",
+                 x=atm.x, m=m_buffer, m_=atm.m)
