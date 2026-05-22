@@ -37,6 +37,7 @@ LR = 0.0003#0.001
 BATCH_SIZE = 8
 NUM_ITERATIONS = 100000
 USE_RESTART_FILE = True
+LAMBDA = 0.1  # Mass conservation penalty weight
 
 # Log files...
 LOG_FILE = "./training.log"
@@ -116,6 +117,7 @@ for epoch in range(epochs):
         optimizer.zero_grad()
         total_loss = 0.0
         
+        total_mse = 0.0
         for f in batch_files:
             # Read the data...
             data = np.load(f)
@@ -150,10 +152,13 @@ for epoch in range(epochs):
             _, dm = deepmix(data_graph)
             dm_minitrac = torch.from_numpy(atm1.m).float()-torch.from_numpy(atm0.m).float()
             loss = loss_fn(dm / DM_STD, dm_minitrac / DM_STD)
-            total_loss += loss
+            # Mass conservation penalty
+            mass_penalty = (dm.sum() / DM_STD) ** 2
+            total_loss += loss + LAMBDA * mass_penalty
+            total_mse += loss.item()
             
-            if (loss >= 0.6):
-            	print(f)
+            #if (loss >= 0.6):
+            #	print(f)
 
         (total_loss / len(batch_files)).backward()
         torch.nn.utils.clip_grad_norm_(deepmix.parameters(), max_norm=1.0)
@@ -162,8 +167,8 @@ for epoch in range(epochs):
         scheduler.step()
         
 
-        # Calculate and log average loss...
-        avg_loss = total_loss.item() / len(batch_files)
+        # Calculate and log average MSE (without penalty) for NRMSE...
+        avg_loss = total_mse / len(batch_files)
         if avg_loss < min_loss:
             min_loss = avg_loss
             torch.save(deepmix.state_dict(), WEIGHTS_FILE)
