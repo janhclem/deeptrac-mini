@@ -33,7 +33,7 @@ import minitraclib as minitrac
 
 # Training config...
 WEIGHTS_FILE = "./deepmix.weights"
-LR = 0.001
+LR = 0.0003#0.001
 BATCH_SIZE = 8
 NUM_ITERATIONS = 100000
 USE_RESTART_FILE = True
@@ -83,7 +83,7 @@ if USE_RESTART_FILE:
 
 # Select optimizer and loss function...
 optimizer = torch.optim.Adam(deepmix.parameters(), lr=LR, weight_decay=1e-5)
-loss_fn = nn.MSELoss()
+loss_fn = nn.HuberLoss()
 
 # LR scheduler: decay from LR to 0.0000625 over total training steps...
 from torch.optim.lr_scheduler import ExponentialLR
@@ -91,6 +91,14 @@ LR_FINAL = 0.0000625
 total_steps = (NUM_ITERATIONS // len(files) + 1) * (len(files) // BATCH_SIZE)
 gamma = (LR_FINAL / LR) ** (1.0 / total_steps)
 scheduler = ExponentialLR(optimizer, gamma=gamma)
+
+# Compute global dm_std from a sample of training files...
+_dm_samples = []
+for _f in files[:200]:
+    _d = np.load(_f)
+    _dm_samples.append(_d["m_"] - _d["m"])
+DM_STD = float(np.concatenate(_dm_samples).std())
+print(f"Global dm_std: {DM_STD:.6f}")
 
 # Define particle data (reusable)...
 atm0 = minitrac.Atm()
@@ -141,15 +149,18 @@ for epoch in range(epochs):
             # Forward propagation...
             _, dm = deepmix(data_graph)
             dm_minitrac = torch.from_numpy(atm1.m).float()-torch.from_numpy(atm0.m).float()
-            dm_std = max(dm_minitrac.std().item(), 0.01)
-            loss = loss_fn(dm / dm_std, dm_minitrac / dm_std)
+            loss = loss_fn(dm / DM_STD, dm_minitrac / DM_STD)
             total_loss += loss
+            
+            if (loss >= 0.6):
+            	print(f)
 
         (total_loss / len(batch_files)).backward()
         torch.nn.utils.clip_grad_norm_(deepmix.parameters(), max_norm=1.0)
 
         optimizer.step()
         scheduler.step()
+        
 
         # Calculate and log average loss...
         avg_loss = total_loss.item() / len(batch_files)
