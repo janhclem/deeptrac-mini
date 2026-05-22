@@ -37,7 +37,7 @@ LR = 0.0003#0.001
 BATCH_SIZE = 8
 NUM_ITERATIONS = 100000
 USE_RESTART_FILE = True
-LAMBDA = 0.1  # Mass conservation penalty weight
+LAMBDA = 0 # 0.001 
 
 # Log files...
 LOG_FILE = "./training.log"

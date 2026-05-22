@@ -125,7 +125,7 @@ def mix(x, m, beta, dmix, dt, dim):
         Updated masses (np.array, shape [n_particles])
     """
     p = kernel(x, beta, dim, dmix, dt)
-    p /= (np.sum(p, axis=1, keepdims=True) + np.sum(p, axis=1, keepdims=True)) * 0.5
+    p /= (np.sum(p, axis=1, keepdims=True) + np.sum(p, axis=0, keepdims=True)) * 0.5
     dm = m[None, :] - m[:, None]
     return m + beta * np.sum(dm * p, axis=1)
 
