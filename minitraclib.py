@@ -27,12 +27,13 @@ import matplotlib.pyplot as plt
 import networkx as nx
 from torch_geometric.utils import to_networkx
 import numpy as np
+from scipy.spatial import cKDTree
 
 class Config():
 	def __init__(self,
 	  lx=100_000,
 	  nump=10_000,
-	  tmax=4000,
+	  tmax=2000,
 	  beta=1.0,
 	  dim=2,
 	  dt=20,
@@ -41,7 +42,7 @@ class Config():
 	  ddiff1=0.0,
 	  u0=None,
 	  m0=1.0,
-	  dt_plot=4000):
+	  dt_plot=2000):
 		self.lx = lx  # m
 		self.np = nump  # -
 		self.tmax = tmax  # s
@@ -85,7 +86,7 @@ class Atm():
 			if method_config["axis"] == 0:
 				self.m[self.x[:,1]<config.lx/2.0] = 0
 			else:
-				self.m[self.x[1, :]<config.lx/2.0] = 0
+				self.m[self.x[:,0]<config.lx/2.0] = 0
 		else:
 			print("Method not available")
 			
@@ -109,7 +110,7 @@ def kernel(x, beta, dim, d, dt):
 
     return norm_const * np.exp(exp_factor * sq_dist)
 
-def mix(x, m, beta, dmix, dt, dim):
+def mix(x, m, beta, dmix, dt, dim, r_cutoff=None):
     """
     Perform particle mass mixing using Gaussian kernel.
 
@@ -120,11 +121,41 @@ def mix(x, m, beta, dmix, dt, dim):
         dmix: Mixing coefficient (m^2/s)
         dt: Time step (s)
         dim: Number of dimensions
+        r_cutoff: Cutoff radius for sparse computation (optional)
 
     Returns:
         Updated masses (np.array, shape [n_particles])
     """
-    p = kernel(x, beta, dim, dmix, dt)
+    n = len(x)
+    if r_cutoff is None:
+        r_cutoff = 3 * 2 * np.sqrt(dmix * dt / beta)  # 3 * lmix
+    
+    # Build KD-tree and find neighbor pairs within cutoff
+    tree = cKDTree(x)
+    pairs = tree.query_pairs(r_cutoff)
+    
+    # Compute kernel ONLY for neighbor pairs (sparse)
+    if pairs:
+        i_arr, j_arr = np.array(list(pairs)).T
+        diffs = x[i_arr] - x[j_arr]
+        sq_dist = np.sum(diffs**2, axis=1)
+        
+        factor = 4 * np.pi * dmix * dt / beta
+        norm_const = (1 / factor) ** (dim / 2)
+        exp_factor = -beta / (4 * dmix * dt)
+        p_vals = norm_const * np.exp(exp_factor * sq_dist)
+        
+        # Build sparse symmetric matrix
+        p = np.zeros((n, n))
+        p[i_arr, j_arr] = p_vals
+        p[j_arr, i_arr] = p_vals  # symmetry
+        np.fill_diagonal(p, norm_const)
+    else:
+        # No neighbors found - zero matrix with diagonal
+        p = np.zeros((n, n))
+        factor = 4 * np.pi * dmix * dt / beta
+        np.fill_diagonal(p, (1 / factor) ** (dim / 2))
+    
     p /= (np.sum(p, axis=1, keepdims=True) + np.sum(p, axis=0, keepdims=True)) * 0.5
     dm = m[None, :] - m[:, None]
     return m + beta * np.sum(dm * p, axis=1)

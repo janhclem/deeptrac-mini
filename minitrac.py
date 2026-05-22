@@ -27,7 +27,8 @@ from cmcrameri import cm
 # Configure...
 DIR_OUT = "./out"
 PLOT_OUT = "./plot"
-NENS = 1 #300
+NENS = 100
+PREC_WARN = 1e-14
 
 # Loop over ensemble...
 for s_idx in range(NENS):
@@ -35,16 +36,13 @@ for s_idx in range(NENS):
 
 	# Define configurations...
 	cfg = mini.Config()
-	cfg.u0 = 25 # np.random.uniform(5,20)
-	#cfg.dmix = 0 #
-	cfg.ddiff0 = 12500/10 #
-	cfg.dt_plot = 200
+	cfg.u0 = np.random.uniform(5,25)
 	cfg.show()
 
 	# Initialize particles...
 	atm = mini.Atm()
 	atm.init(cfg)
-	atm.mod_mass( cfg, method="half", axis=np.random.randint(0,1), noise=False)
+	atm.mod_mass( cfg, method="half", axis=np.random.randint(0,2), noise=True)
 
 	# Fix functions...
 	gyre_ = partial(mini.gyre, lx=cfg.lx, u0=cfg.u0)
@@ -78,7 +76,10 @@ for s_idx in range(NENS):
 
 		# Mixing...
 		if (cfg.dmix > 0):
-			atm.m = mini.mix(atm.x, atm.m, cfg.beta, cfg.dmix, cfg.dt, cfg.dim)
+			atm.m = mini.mix(atm.x, atm.m, cfg.beta, cfg.dmix, cfg.dt, cfg.dim, r_cutoff=3*cfg.lmix)
+		
+		if np.sum(m_buffer-atm.m) > PREC_WARN:
+			print("Mass not properly conserved")
 
 		# Write...
 		os.makedirs(f"{DIR_OUT}/{s_idx}/", exist_ok=True)
