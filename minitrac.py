@@ -17,6 +17,7 @@ MINITRAC is a minimal example to study particle dispersion and mixing.
 """
 
 import minitraclib as mini
+import deeptraclib as deep
 from functools import partial
 from tqdm import tqdm
 import numpy as np
@@ -24,8 +25,16 @@ import os
 import matplotlib.pylab as plt
 from cmcrameri import cm
 
-DIR_OUT = "./out"
-PLOT_OUT = "./plot"
+
+EMULATION = False
+
+if EMULATION:
+	DIR_OUT = "./out_emulation"
+	PLOT_OUT = "./plot_emulation"
+else:
+	DIR_OUT = "./out"
+	PLOT_OUT = "./plot"
+
 NENS = 999
 PREC_WARN = 1e-14
 
@@ -33,13 +42,17 @@ for s_idx in range(NENS):
     print(f"[INFO] Starting scenario {s_idx} of {NENS}")
 
     cfg = mini.Config()
-    cfg.dt_plot = 200
+    cfg.dt_plot = 20
     cfg.u0 = np.random.uniform(5, 25)
     cfg.show()
 
     atm = mini.Atm()
     atm.init(cfg)
-    atm.init_mass_gauss(cfg)
+    
+    if s_idx%2:
+    	atm.init_mass_gauss(cfg)
+    else:
+    	atm.mod_mass(cfg)
 
     gyre_ = partial(mini.gyre, lx=cfg.lx, u0=cfg.u0)
     kernel_ = partial(mini.kernel, beta=cfg.beta, dim=cfg.dim, d=cfg.dmix, dt=cfg.dt)
@@ -70,7 +83,10 @@ for s_idx in range(NENS):
 
         # Mixing
         if cfg.dmix > 0:
-            atm.m = mini.mix(atm.x, atm.m, cfg.beta, cfg.dmix, cfg.dt, cfg.dim,
+        	if EMULATION:
+        		atm.m = deep.mix(atm.x, atm.m, r=cfg.lmix, m0=cfg.m0)
+        	else:
+            		atm.m = mini.mix(atm.x, atm.m, cfg.beta, cfg.dmix, cfg.dt, cfg.dim,
                              r_cutoff=3 * cfg.lmix)
 
         mass_balance = np.abs(np.sum(m_buffer - atm.m))

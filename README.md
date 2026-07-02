@@ -1,6 +1,6 @@
 # Lagrangian Transport Modeling: Prototyping New Mixing Methods and Deep Emulators
 
-This repository contains **MINITRAC** and **DEEPTRAC** — a suite of tools for exploring new methods in dispersion modeling and for investigating deep learning within Lagrangian frameworks. It is intended as a research playground for experimentation and learning.
+This repository contains **MINITRAC** and **DEEPTRAC** — a suite of tools for exploring new methods in particle dispersion modeling and for investigating deep learning within Lagrangian frameworks. 
 
 | Component | Description |
 |---|---|
@@ -19,9 +19,9 @@ This repository contains **MINITRAC** and **DEEPTRAC** — a suite of tools for 
 
 ---
 
-## 0. Wind Fields and Advection
+## 1. Wind Fields and Advection
 
-A simple analytical double-gyre wind field drives filamentation on a 100 km × 100 km domain. Particles are advected using the gyre's analytical velocity functions with a first-order Euler integration scheme. The examples below show the initial state and state after 2000 s for different physics combinations.
+A simple analytical double-gyre wind field drives filamentation on a 100 km × 100 km domain. Particles are advected using the gyre's analytical velocity functions with a first-order Euler integration scheme. The examples below show different simulation results for four different setups: First, only with advection, second with advection but brownian motion added (dispersion), second with the mass-transfer mixing scheme, and the last one with mixing and dispersion. 
 
 | Setup | Figure |
 |---|---|
@@ -32,9 +32,9 @@ A simple analytical double-gyre wind field drives filamentation on a 100 km × 1
 
 ---
 
-## 1. Numerical Mixing: Mass-Transfer Scheme
+## 2. Numerical Mixing: Mass-Transfer Scheme
 
-Particle-mass-transfer algorithms calculate inter-particle mixing within a Lagrangian transport framework. They approximate the Eulerian advection-diffusion-reaction equation without introducing artificial numerical diffusion and, when operated in a numerically stable regime, are strictly mass-conserving. The mixing kernels used between particles are identical to the kernel representations found in **Smoothed Particle Hydrodynamics (SPH)**.
+Particle-mass-transfer algorithms calculate inter-particle mixing within a Lagrangian transport framework. They approximate the Eulerian advection-diffusion-reaction equation without introducing artificial numerical diffusion and, when operated in a numerically stable regime, are strictly mass-conserving. The mixing kernels used between particles are identical to the kernel representations found in **Smoothed Particle Hydrodynamics (SPH)**. 
 
 These algorithms have been successfully parallelized and domain-decomposed (Benson et al.). The kernel used here is a **Gaussian**, motivated by the **Green's function** of the diffusion equation: an injected particle begins as a delta-function pulse and disperses into a Gaussian distribution over a sufficiently small, yet non-negligible, time step.
 
@@ -48,11 +48,15 @@ Each particle is an idealized representative of a finite atmospheric area. Uncer
 
 In the thermodynamic limit, a parcel large enough to be thermodynamically meaningful is also susceptible to disintegration — this process must be modeled. The Green's function of diffusion over a small time step is a Gaussian; the parcel "disintegrates" and its mass mixes into neighboring particles. When multiple particles are present, their respective Gaussian distributions overlap, quantifying mixing in a rigorous manner.
 
+1. First, study the dispersion of a delta pulse and derive the Gaussian.
+2. Formulate the kernel.
+3. Create the double stochastic exchange matrix.
+
 > **Further reading:** Benson et al. (2024) describe the algorithm and its parallelization in detail.
 
 ---
 
-## 2. Numerical Dispersion: Random Walks
+## 3. Numerical Dispersion: Random Walks
 
 While the mixing scheme parameterizes parcel disintegration, the **random walk** component parameterizes sub-grid scale wind effects. On limited-resolution grids, exact details of the velocity field are unknown at sub-grid scales; we therefore calculate statistics over the possible trajectories parcels may follow.
 
@@ -60,15 +64,14 @@ Sub-grid scale diffusion acts as an additional correction to the center of mass 
 
 > **Future work:** Statistical representations of sub-grid scale winds or super-resolution techniques (e.g., AI-driven models such as **AtmoRep**) could improve these schemes.
 
----
 
-## 3. Emulation: Deep Graph Neural Networks
+## 4. Emulation: Deep Graph Neural Networks
 
 **DEEPTRAC** uses a Graph Neural Network (GNN) to replace the deterministic mixing scheme with a learned statistical surrogate, introducing GNNs into a Lagrangian modeling framework.
 
 ### Model Architecture
 
-**DeepMix** follows an **Encoder–Processor–Decoder** paradigm with recursive message passing in latent space.
+**DeepMix** follows an **Encoder–Processor–Decoder** paradigm with recursive message passing in latent space. Hence it is a semi-autoencoder that build up a latent space with extended coordinates, and a processor that learns the dynamics of the system. The enlargement of the dimensionality in the encoder helps the processor to learn a proper representation of the dynamics. Intuitively this becomes necessary, as we need to learn a complex gaussian kernel (including distances between particles, the kernel smoothness and the diffusity parameter), which requieres more dimensions for reasoning.
 
 Particles are structured as a graph:
 - **Connectivity:** Edges connect particles within a radius $r$ aligned to the mixing length $l_\mathrm{mix}$, balancing local information gathering against computational cost.

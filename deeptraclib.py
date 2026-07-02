@@ -23,6 +23,9 @@ from torch_geometric.nn import MLP
 import matplotlib.pyplot as plt
 import networkx as nx
 from torch_geometric.utils import to_networkx
+from torch_geometric.data import Data
+from torch_geometric.nn import radius_graph
+import numpy as np
 
 
 class DeepMix(torch.nn.Module):
@@ -102,6 +105,24 @@ class DeepMix(torch.nn.Module):
 
         return u, u_agg
 
+
+def mix( x,  m, r, m0=1.0, weights_file= "./deepmix.weights.0"):
+
+	# Construct the graph from x, m and r
+	f_graph    = torch.from_numpy(np.concatenate([x, m[:, None]], axis=1)).float()
+	pos_graph  = torch.from_numpy(x).float()
+	edge_index = radius_graph(pos_graph, r=r, batch=None, loop=False)
+	data_graph = Data(x=f_graph, edge_index=edge_index, pos=pos_graph)
+	i, j = data_graph.edge_index
+	norm = torch.tensor([r, r, m0])
+	data_graph.edge_attr = ((data_graph.x[j] - data_graph.x[i]) / norm).float()
+
+	deepmix = DeepMix(data_graph)
+	deepmix.load_state_dict(torch.load(weights_file, weights_only=True))
+	deepmix.eval()
+	
+	return m + deepmix(data_graph)[1].detach().numpy()
+	
 
 def plot_graph(data_graph):
     """Visualize a PyG graph overlaid on particle positions."""

@@ -142,10 +142,12 @@ class Atm():
 
     def init_mass_gauss(self, config):
         """Initialize masses as a Gaussian blob at a random location."""
-        x0 = np.random.uniform(0, config.lx)
-        y0 = np.random.uniform(0, config.lx)
+        x0 = np.random.uniform( 0, config.lx)
+        y0 = np.random.uniform( 0, config.lx)
         r2 = (self.x[:, 0] - x0) ** 2 + (self.x[:, 1] - y0) ** 2
-        self.m = config.m0 * np.exp(-r2 / config.lx)
+        sigma = np.random.uniform(0.1,0.2)*config.lx**2
+        print(sigma/config.lx**2)
+        self.m = config.m0*np.exp(-r2/sigma)
 
 
 def kernel(x, beta, dim, d, dt):
@@ -242,7 +244,6 @@ def mix(x, m, beta, dmix, dt, dim, r_cutoff=None):
 
     dm = m[None, :] - m[:, None]
     return m + beta * np.sum(dm * p, axis=1)
-
 
 def gyre(x, lx, u0):
     """

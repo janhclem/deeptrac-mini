@@ -34,15 +34,15 @@ import minitraclib as minitrac
 # Training configuration
 # ---------------------------------------------------------------------------
 WEIGHTS_FILE    = "./deepmix.weights"
-LR              = 0.0003
+LR              = 0.00003 #0.0003
 LR_FINAL        = 0.0000625
 BATCH_SIZE      = 8
-NUM_ITERATIONS  = 100_000
-USE_RESTART     = False
-LAMBDA          = 0.0   # mass-conservation penalty weight
+NUM_ITERATIONS  = 500_000
+USE_RESTART     = True
+LAMBDA          = 0.01   # mass-conservation penalty weight
 
 LOG_FILE        = "./training.log"
-FILES_DATA      = "./out/*/*/*/*"
+FILES_DATA      = "./out/*/*"
 
 # ---------------------------------------------------------------------------
 # Logging
@@ -137,10 +137,12 @@ for epoch in range(epochs):
             dm_target = torch.from_numpy(atm1.m).float() - torch.from_numpy(atm0.m).float()
 
             loss = loss_fn(dm / DM_STD, dm_target / DM_STD)
-            mass_penalty = (dm.sum() / DM_STD) ** 2
+            #mass_penalty = (dm.sum() / DM_STD) ** 2
+            mass_penalty = (dm.sum() / (DM_STD * torch.sqrt(torch.tensor(data_graph.num_nodes, dtype=torch.float)))) ** 2
             total_loss += loss + LAMBDA * mass_penalty
             total_mse  += loss.item()
-
+            print(f"loss={loss.item():.5f}  raw_penalty={mass_penalty.item():.5f}  weighted={LAMBDA*mass_penalty.item():.5f}  N={data_graph.num_nodes}")
+        
         (total_loss / len(batch_files)).backward()
         torch.nn.utils.clip_grad_norm_(deepmix.parameters(), max_norm=1.0)
         optimizer.step()

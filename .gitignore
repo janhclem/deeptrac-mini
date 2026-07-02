@@ -12,3 +12,5 @@ out*/
 training.log
 plot/
 deepmix.weights
+plot_emulation/
+out_emulation/
