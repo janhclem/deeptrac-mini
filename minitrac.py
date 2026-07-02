@@ -26,7 +26,7 @@ import matplotlib.pylab as plt
 from cmcrameri import cm
 
 
-EMULATION = False
+EMULATION = True
 
 if EMULATION:
 	DIR_OUT = "./out_emulation"
