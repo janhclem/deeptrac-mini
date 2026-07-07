@@ -42,8 +42,12 @@ for s_idx in range(NENS):
     print(f"[INFO] Starting scenario {s_idx} of {NENS}")
 
     cfg = mini.Config()
-    cfg.dt_plot = 20
     cfg.u0 = np.random.uniform(5, 25)
+    cfg.u0 = 62.66
+    cfg.lx = 6371000*np.pi
+    cfg.dt = 1800
+    cfg.tmax = 1800*48*30
+    cfg.dt_plot = cfg.dt
     cfg.show()
 
     atm = mini.Atm()
@@ -60,24 +64,31 @@ for s_idx in range(NENS):
     print("[INFO] Starting time loop.")
     for t_idx, t in tqdm(enumerate(np.arange(0, cfg.tmax + cfg.dt, cfg.dt))):
 
+	# Plotting...
         if t % cfg.dt_plot == 0:
             os.makedirs(f"{PLOT_OUT}/{s_idx}/", exist_ok=True)
             plt.figure()
             sct = plt.scatter(atm.x[:, 0] / 1000, atm.x[:, 1] / 1000,
                               c=atm.m, vmin=0, vmax=1, cmap=cm.imola, s=0.1)
             plt.colorbar(sct)
+            plt.xlabel("x [km]")
+            plt.ylabel("y [km]")
             plt.savefig(f"{PLOT_OUT}/{s_idx}/mass_{t_idx:03d}.png", dpi=300)
             plt.close()
 
         # Advection
-        vel = gyre_(atm.x)
+        # vel = gyre_(atm.x)
+        vel = mini.jet(atm.x,lx=cfg.lx, U0=cfg.u0, t=t)
         atm.x += vel * cfg.dt
+
 
         # First-order dispersion (random walk)
         atm.x += 2 * np.sqrt(cfg.ddiff0 * cfg.dt) * np.random.normal(0, 1, size=atm.x.shape)
 
         # Enforce domain boundaries
-        atm.x = np.clip(atm.x, a_min=0, a_max=cfg.lx)
+        #atm.x = np.clip(atm.x, a_min=0, a_max=cfg.lx)
+        atm.x[:,0][atm.x[:,0] > cfg.lx] -=  cfg.lx
+        atm.x[:,0][atm.x[:,0] < 0] += cfg.lx
 
         m_buffer = atm.m.copy()
 

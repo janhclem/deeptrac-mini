@@ -30,8 +30,8 @@ class Config():
                  beta=1.0,
                  dim=2,
                  dt=20,
-                 dmix=12500,
-                 ddiff0=12500,
+                 dmix=12500*100**2,
+                 ddiff0=12500*0,
                  ddiff1=0.0,
                  u0=None,
                  m0=1.0,
@@ -273,7 +273,65 @@ def gyre(x, lx, u0):
     v =  np.pi * u0 * np.cos(arg_x) * np.sin(arg_y)
 
     return np.stack((u, v), axis=-1)
+ 
+def jet(x, t, U0, lx, L=1770000, re=6371000,
+                 A=(0.0075, 0.15, 0.3),
+                 c_frac=(0.1446, 0.205, 0.461)):
+    """
+    Evaluate the analytical Bickley jet velocity field.
+
+    The stream function is
+        psi = -U0*L*tanh(y/L)
+              + sum_i A_i*U0*L*sech(y/L)**2 * cos(k_i*x - sigma_i*t),
+    yielding a meandering zonal jet with three regular vortices on
+    each side, on a periodic domain in x (period 2*pi*re) and y in
+    roughly [-3, 3] (in units of L, unbounded in principle).
+
+    Parameters
+    ----------
+    x : np.ndarray, shape (n, 2)
+        Particle positions (m), with x[:,0] the zonal coordinate
+        and x[:,1] the meridional coordinate.
+    t : float
+        Time (s).
+    U0 : float
+        Characteristic jet speed (m/s).
+    L : float
+        Jet width scale (m).
+    re : float, optional
+        Planetary radius scale used to set the wavenumbers
+        k_i = i / re (default matches Rypina et al., 2007).
+    A : tuple of float, optional
+        Amplitudes of the three meandering modes.
+    c_frac : tuple of float, optional
+        Phase speeds c_i / U0 for the three modes.
+
+    Returns
+    -------
+    np.ndarray, shape (n, 2)
+        Velocity vectors (m/s).
+    """
+    xx = x[:, 0]
+    yy = x[:, 1]-lx/2
+
+    k = np.array([2.0, 4.0, 6.0]) / re
+    c = np.array(c_frac) * U0
+    sigma = c * k
+
+    s = 1.0 / np.cosh(yy / L)      # sech(y/L)
+    th = np.tanh(yy / L)
+
+    u = U0 * s**2
+    v = np.zeros_like(xx)
     
+    for Ai, ki, sigi in zip(A, k, sigma):
+        phase = ki * xx - sigi * t
+        u += 2.0 * U0 * Ai * s**2 * th * np.cos(phase)
+        v += -U0 * L * Ai * ki * s**2 * np.sin(phase)
+
+    return np.stack((u, v), axis=-1) 
+    
+
 
 
 
