@@ -26,7 +26,7 @@ import matplotlib.pylab as plt
 from cmcrameri import cm
 
 
-EMULATION = True
+EMULATION = False
 
 if EMULATION:
 	DIR_OUT = "./out_emulation"
@@ -53,13 +53,14 @@ for s_idx in range(NENS):
 
     atm = mini.Atm()
     atm.init(cfg)
+    dists = None
     
-    #if s_idx%2:
-    # 	atm.init_mass_gauss(cfg)
-    #else:
-    #	atm.mod_mass(cfg)
+    if s_idx%2:
+     	atm.init_mass_gauss(cfg)
+    else:
+    	atm.mod_mass(cfg)
     	
-    atm.init_mass_gradient(cfg)
+    #atm.init_mass_gradient(cfg)
 
     gyre_ = partial(mini.gyre, lx=cfg.lx, u0=cfg.u0)
     kernel_ = partial(mini.kernel, beta=cfg.beta, dim=cfg.dim, d=cfg.dmix, dt=cfg.dt)
@@ -71,9 +72,9 @@ for s_idx in range(NENS):
         if t % cfg.dt_plot == 0:
             os.makedirs(f"{PLOT_OUT}/{s_idx}/", exist_ok=True)
             plt.figure()
-            #sct = plt.scatter(atm.x[:, 0] / 1000, atm.x[:, 1] / 1000,
-            #                  c=atm.m, vmin=0, vmax=1, cmap=cm.glasgow, s=1)
-            sct = plt.tricontourf(atm.x[:, 0] / 1000, atm.x[:, 1] / 1000, atm.m, cmap=cm.glasgow, levels=100, vmin=0, vmax=1)
+            sct = plt.scatter(atm.x[:, 0] / 1000, atm.x[:, 1] / 1000,
+                              c=atm.m, vmin=0, vmax=1, cmap=cm.glasgow, s=1)
+            #sct = plt.tricontourf(atm.x[:, 0] / 1000, atm.x[:, 1] / 1000, atm.m, cmap=cm.glasgow, levels=100, vmin=0, vmax=1)
             plt.colorbar(sct)
             plt.xlabel("x [km]")
             plt.ylabel("y [km]")
@@ -84,7 +85,6 @@ for s_idx in range(NENS):
         # vel = gyre_(atm.x)
         vel = mini.jet(atm.x,lx=cfg.lx, U0=cfg.u0, t=t)
         atm.x += vel * cfg.dt
-
 
         # First-order dispersion (random walk)
         atm.x += 2 * np.sqrt(cfg.ddiff0 * cfg.dt) * np.random.normal(0, 1, size=atm.x.shape)
@@ -101,8 +101,8 @@ for s_idx in range(NENS):
         	if EMULATION:
         		atm.m = deep.mix(atm.x, atm.m, r=cfg.lmix, m0=cfg.m0)
         	else:
-            		atm.m = mini.mix(atm.x, atm.m, cfg.beta, cfg.dmix, cfg.dt, cfg.dim,
-                             r_cutoff=3 * cfg.lmix)
+            		atm.m, dists = mini.mix(atm.x, atm.m, cfg.beta, cfg.dmix, cfg.dt, cfg.dim,
+                             r_cutoff=3 * cfg.lmix, dists_tm1=dists,lbd_c=1.3888888888888888e-05, w=0.00001)
 
         mass_balance = np.abs(np.sum(m_buffer - atm.m))
         if mass_balance > PREC_WARN:

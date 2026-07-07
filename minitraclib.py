@@ -183,15 +183,18 @@ def kernel(x, beta, dim, d, dt):
     return norm_const * np.exp(exp_factor * sq_dist)
 
 
-def mix(x, m, beta, dmix, dt, dim, r_cutoff=None):
+def mix(x, m, beta, dmix, dt, dim, r_cutoff=None, dists_tm1=None,
+        lbd_c=1.2 / 86400.0, w=1.0):
     """
-    Perform one mixing step via a sparse Gaussian kernel mass-transfer scheme.
-
+    Perform one mixing step via a sparse Gaussian kernel mass-transfer scheme,
+    with an optional stretching trigger that enhances local diffusivity where
+    the finite-time stretching rate between neighbor pairs exceeds `lbd_c`.
+ 
     Particle masses are updated by exchanging mass proportional to a Gaussian
     kernel evaluated between neighbouring particles. The kernel matrix is
     symmetrized and row/column normalized to enforce double-stochasticity,
     guaranteeing mass conservation.
-
+ 
     Parameters
     ----------
     x : np.ndarray, shape (n, dim)
@@ -201,46 +204,76 @@ def mix(x, m, beta, dmix, dt, dim, r_cutoff=None):
     beta : float
         Kernel shape parameter.
     dmix : float
-        Mixing diffusivity (m²/s).
+        Baseline mixing diffusivity (m^2/s).
     dt : float
         Time step (s).
     dim : int
         Spatial dimensions.
     r_cutoff : float or None
-        Neighbour search radius (m). Defaults to 3 × lmix.
-
+        Neighbour search radius (m). Defaults to 6 * sqrt(dmix * dt / beta).
+    dists_tm1 : dict {(i, j): sq_dist} or None
+        Sparse pairwise squared distances from the previous call. Pass the
+        `dists` returned by the previous call. None on the first call.
+    lbd_c : float
+        Critical stretching rate (1/s) above which mixing is enhanced.
+        Default 1.2/day, expressed in 1/s.
+    w : float
+        Smoothness of the tanh trigger around lbd_c. Larger = smoother/
+        wider transition; smaller = sharper, closer to a hard threshold.
+ 
     Returns
     -------
-    np.ndarray, shape (n,)
+    m_new : np.ndarray, shape (n,)
         Updated particle masses.
+    dists : dict {(i, j): sq_dist}
+        Sparse pairwise squared distances at this step. Pass this back in
+        as `dists_tm1` on the next call.
     """
     n = len(x)
     if r_cutoff is None:
-        r_cutoff = 3 * 2 * np.sqrt(dmix * dt / beta)
-
+        r_cutoff = 6 * np.sqrt(dmix * dt / beta)
+ 
     tree = cKDTree(x)
-    pairs = tree.query_pairs(r_cutoff)
-
-    factor = 4 * np.pi * dmix * dt / beta
-    norm_const = (1 / factor) ** (dim / 2)
-    exp_factor = -beta / (4 * dmix * dt)
-
-    p = np.zeros((n, n))
-    np.fill_diagonal(p, norm_const)
-
+    pairs = list(tree.query_pairs(r_cutoff))
+ 
+    dists_tm1 = dists_tm1 if dists_tm1 is not None else {}
+ 
+    dists = {}
+    i_arr = j_arr = np.zeros(0, dtype=int)
+    p_vals = np.zeros(0)
+ 
     if pairs:
-        i_arr, j_arr = np.array(list(pairs)).T
+        i_arr, j_arr = np.array(pairs).T
         diffs = x[i_arr] - x[j_arr]
         sq_dist = np.sum(diffs ** 2, axis=1)
+        dists = {(int(i), int(j)): float(d) for i, j, d in zip(i_arr, j_arr, sq_dist)}
+ 
+        rate = np.full(len(pairs), lbd_c)
+        for k in range(len(pairs)):
+            i, j = int(i_arr[k]), int(j_arr[k])
+            prev = dists_tm1.get((i, j), dists_tm1.get((j, i)))
+            if prev is not None and prev > 0 and sq_dist[k] > 0:
+                rate[k] = np.log(np.sqrt(sq_dist[k] / prev)) / dt
+ 
+        dmix_exp = dmix * (1 + np.tanh((rate - lbd_c) /w))    
+        factor = 4 * np.pi * dmix_exp * dt / beta
+        norm_const = factor ** (-dim / 2)
+        exp_factor = -beta / (4 * dmix_exp * dt)
         p_vals = norm_const * np.exp(exp_factor * sq_dist)
+        
+    diag_norm_const = (4 * np.pi * dmix * dt / beta) ** (-dim / 2)
+ 
+    p = np.zeros((n, n))
+    np.fill_diagonal(p, diag_norm_const)
+    if pairs:
         p[i_arr, j_arr] = p_vals
         p[j_arr, i_arr] = p_vals
-
-    # Double-stochastic normalization: average of row and column sums
+ 
     p /= (np.sum(p, axis=1, keepdims=True) + np.sum(p, axis=0, keepdims=True)) * 0.5
-
+ 
     dm = m[None, :] - m[:, None]
-    return m + beta * np.sum(dm * p, axis=1)
+    
+    return m + beta * np.sum(dm * p, axis=1), dists
 
 def gyre(x, lx, u0):
     """
