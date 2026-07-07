@@ -122,7 +122,7 @@ class Atm():
         if method == "half":
             axis = method_config.get("axis", 0)
             if axis == 0:
-                self.m[self.x[:, 1] < config.lx / 2.0] = 0
+            	self.m[self.x[:, 1] < config.lx / 2.0] = 0
             else:
                 self.m[self.x[:, 0] < config.lx / 2.0] = 0
         else:
@@ -273,3 +273,12 @@ def gyre(x, lx, u0):
     v =  np.pi * u0 * np.cos(arg_x) * np.sin(arg_y)
 
     return np.stack((u, v), axis=-1)
+    
+
+
+
+
+
+
+
+
