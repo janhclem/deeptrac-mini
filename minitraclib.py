@@ -101,7 +101,7 @@ class Atm():
 
     def init(self, config):
         """Initialize particles on a uniform random distribution with constant mass."""
-        self.x = np.random.uniform(0, config.lx, size=(config.np, config.dim))
+        self.x = np.random.uniform([0,config.lx/4.0], [config.lx, config.lx*3/4], size=(config.np, config.dim))
         self.m = np.ones(shape=config.np) * config.m0
 
     def mod_mass(self, config, noise=False, method="half", **method_config):
@@ -134,11 +134,9 @@ class Atm():
             self.m += np.random.normal(a, b, size=self.m.shape)
             self.m = np.clip(self.m, a_min=0, a_max=1)
 
-    def init_mass_gradient(self, config, order=1):
-        """Initialize masses as a random linear gradient across the domain."""
-        a = np.random.uniform(0, 1)
-        b = np.random.uniform(0, 1)
-        self.m = ((self.x[:, 0] / config.lx * a + self.x[:, 1] / config.lx * b) * 0.5) ** order
+    def init_mass_gradient(self, config):
+        """Initialize masses as a linear gradient across the domain."""
+        self.m = (self.x[:, 1] / config.lx * 2 - 1/2)* config.m0 
 
     def init_mass_gauss(self, config):
         """Initialize masses as a Gaussian blob at a random location."""
@@ -146,7 +144,6 @@ class Atm():
         y0 = np.random.uniform( 0, config.lx)
         r2 = (self.x[:, 0] - x0) ** 2 + (self.x[:, 1] - y0) ** 2
         sigma = np.random.uniform(0.1,0.2)*config.lx**2
-        print(sigma/config.lx**2)
         self.m = config.m0*np.exp(-r2/sigma)
 
 

@@ -26,7 +26,7 @@ import matplotlib.pylab as plt
 from cmcrameri import cm
 
 
-EMULATION = False
+EMULATION = True
 
 if EMULATION:
 	DIR_OUT = "./out_emulation"
@@ -46,6 +46,7 @@ for s_idx in range(NENS):
     cfg.u0 = 62.66
     cfg.lx = 6371000*np.pi
     cfg.dt = 1800
+    #cfg.dmix = 0
     cfg.tmax = 1800*48*30
     cfg.dt_plot = cfg.dt
     cfg.show()
@@ -53,10 +54,12 @@ for s_idx in range(NENS):
     atm = mini.Atm()
     atm.init(cfg)
     
-    if s_idx%2:
-    	atm.init_mass_gauss(cfg)
-    else:
-    	atm.mod_mass(cfg)
+    #if s_idx%2:
+    # 	atm.init_mass_gauss(cfg)
+    #else:
+    #	atm.mod_mass(cfg)
+    	
+    atm.init_mass_gradient(cfg)
 
     gyre_ = partial(mini.gyre, lx=cfg.lx, u0=cfg.u0)
     kernel_ = partial(mini.kernel, beta=cfg.beta, dim=cfg.dim, d=cfg.dmix, dt=cfg.dt)
@@ -68,8 +71,9 @@ for s_idx in range(NENS):
         if t % cfg.dt_plot == 0:
             os.makedirs(f"{PLOT_OUT}/{s_idx}/", exist_ok=True)
             plt.figure()
-            sct = plt.scatter(atm.x[:, 0] / 1000, atm.x[:, 1] / 1000,
-                              c=atm.m, vmin=0, vmax=1, cmap=cm.imola, s=0.1)
+            #sct = plt.scatter(atm.x[:, 0] / 1000, atm.x[:, 1] / 1000,
+            #                  c=atm.m, vmin=0, vmax=1, cmap=cm.glasgow, s=1)
+            sct = plt.tricontourf(atm.x[:, 0] / 1000, atm.x[:, 1] / 1000, atm.m, cmap=cm.glasgow, levels=100, vmin=0, vmax=1)
             plt.colorbar(sct)
             plt.xlabel("x [km]")
             plt.ylabel("y [km]")
