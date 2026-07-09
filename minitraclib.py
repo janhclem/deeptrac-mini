@@ -25,12 +25,12 @@ class Config():
 
     def __init__(self,
                  lx=100_000,
-                 nump=10_000,
+                 nump=20_000,
                  tmax=2000,
                  beta=1.0,
                  dim=2,
                  dt=20,
-                 dmix=12500*100**2,
+                 dmix=12500*100**2/2.0,
                  ddiff0=12500*0,
                  ddiff1=0.0,
                  u0=None,
@@ -182,9 +182,8 @@ def kernel(x, beta, dim, d, dt):
 
     return norm_const * np.exp(exp_factor * sq_dist)
 
-
-def mix(x, m, beta, dmix, dt, dim, r_cutoff=None, dists_tm1=None,
-        lbd_c=1.2 / 86400.0, w=1.0):
+def mix(x, m, beta, dmix, dt_mix, dim, r_cutoff=None, dists_tm1=None,
+        lbd_c=1.2, w=1.0):
     """
     Perform one mixing step via a sparse Gaussian kernel mass-transfer scheme,
     with an optional stretching trigger that enhances local diffusivity where
@@ -205,8 +204,8 @@ def mix(x, m, beta, dmix, dt, dim, r_cutoff=None, dists_tm1=None,
         Kernel shape parameter.
     dmix : float
         Baseline mixing diffusivity (m^2/s).
-    dt : float
-        Time step (s).
+    dt_mix : float
+        Time step of mixing scheme (s).
     dim : int
         Spatial dimensions.
     r_cutoff : float or None
@@ -231,7 +230,7 @@ def mix(x, m, beta, dmix, dt, dim, r_cutoff=None, dists_tm1=None,
     """
     n = len(x)
     if r_cutoff is None:
-        r_cutoff = 6 * np.sqrt(dmix * dt / beta)
+        r_cutoff = 6 * np.sqrt(dmix * dt_mix / beta)
  
     tree = cKDTree(x)
     pairs = list(tree.query_pairs(r_cutoff))
@@ -253,27 +252,35 @@ def mix(x, m, beta, dmix, dt, dim, r_cutoff=None, dists_tm1=None,
             i, j = int(i_arr[k]), int(j_arr[k])
             prev = dists_tm1.get((i, j), dists_tm1.get((j, i)))
             if prev is not None and prev > 0 and sq_dist[k] > 0:
-                rate[k] = np.log(np.sqrt(sq_dist[k] / prev)) / dt
+                rate[k] = np.log(np.sqrt(sq_dist[k] / prev)) / dt_mix
  
-        dmix_exp = dmix * (1 + np.tanh((rate - lbd_c) /w))    
-        factor = 4 * np.pi * dmix_exp * dt / beta
+        dmix_exp = dmix * (1 + np.tanh((rate - lbd_c) /w))
+        mask_infty = dmix_exp < 0.0001 # Guard from numerical instability. 
+        factor = 4 * np.pi * dmix_exp * dt_mix / beta
         norm_const = factor ** (-dim / 2)
-        exp_factor = -beta / (4 * dmix_exp * dt)
+        exp_factor = -beta / (4 * dmix_exp * dt_mix)
         p_vals = norm_const * np.exp(exp_factor * sq_dist)
+        p_vals[mask_infty] = 0
         
-    diag_norm_const = (4 * np.pi * dmix * dt / beta) ** (-dim / 2)
+    diag_norm_const = (4 * np.pi * dmix * dt_mix / beta) ** (-dim / 2)
  
     p = np.zeros((n, n))
+    r = np.zeros((n, n))
     np.fill_diagonal(p, diag_norm_const)
     if pairs:
         p[i_arr, j_arr] = p_vals
         p[j_arr, i_arr] = p_vals
- 
+        r[i_arr, j_arr] = rate
+        r[j_arr, i_arr] = rate
+    
+    rates = np.mean(r,axis=0)
+    print(np.max(np.abs(rates)))
+    
     p /= (np.sum(p, axis=1, keepdims=True) + np.sum(p, axis=0, keepdims=True)) * 0.5
  
     dm = m[None, :] - m[:, None]
     
-    return m + beta * np.sum(dm * p, axis=1), dists
+    return m + beta * np.sum(dm * p, axis=1), dists, rates
 
 def gyre(x, lx, u0):
     """

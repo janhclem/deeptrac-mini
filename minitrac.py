@@ -46,21 +46,23 @@ for s_idx in range(NENS):
     cfg.u0 = 62.66
     cfg.lx = 6371000*np.pi
     cfg.dt = 1800
+    cfg.dt_mix = 24*3600
     #cfg.dmix = 0
     cfg.tmax = 1800*48*30
-    cfg.dt_plot = cfg.dt
+    cfg.dt_plot = cfg.dt_mix
     cfg.show()
 
     atm = mini.Atm()
     atm.init(cfg)
     dists = None
+    rates = None
     
-    if s_idx%2:
-     	atm.init_mass_gauss(cfg)
-    else:
-    	atm.mod_mass(cfg)
+    #if s_idx%2:
+    # 	atm.init_mass_gauss(cfg)
+    #else:
+    #	atm.mod_mass(cfg)
     	
-    #atm.init_mass_gradient(cfg)
+    atm.init_mass_gradient(cfg)
 
     gyre_ = partial(mini.gyre, lx=cfg.lx, u0=cfg.u0)
     kernel_ = partial(mini.kernel, beta=cfg.beta, dim=cfg.dim, d=cfg.dmix, dt=cfg.dt)
@@ -72,12 +74,18 @@ for s_idx in range(NENS):
         if t % cfg.dt_plot == 0:
             os.makedirs(f"{PLOT_OUT}/{s_idx}/", exist_ok=True)
             plt.figure()
-            sct = plt.scatter(atm.x[:, 0] / 1000, atm.x[:, 1] / 1000,
-                              c=atm.m, vmin=0, vmax=1, cmap=cm.glasgow, s=1)
-            #sct = plt.tricontourf(atm.x[:, 0] / 1000, atm.x[:, 1] / 1000, atm.m, cmap=cm.glasgow, levels=100, vmin=0, vmax=1)
+            #sct = plt.scatter(atm.x[:, 0] / 1000**2, atm.x[:, 1] / 1000**2,
+            #                  c=atm.m, vmin=0, vmax=1, cmap=cm.glasgow, s=1)
+            #if rates is None:
+            z = atm.m
+            sct = plt.tricontourf(atm.x[:, 0] / 1000/1000, atm.x[:, 1] / 1000/1000, atm.m, cmap=cm.glasgow, levels=500, vmin=0, vmax=1)
+            #else:
+            #	z = rates
+            #	sct = plt.scatter(atm.x[:, 0] / 1000/1000, atm.x[:, 1] / 1000/1000, c=z, cmap=cm.vik, vmin=-2e-8, vmax=2e-8, s=0.3)
+            
             plt.colorbar(sct)
-            plt.xlabel("x [km]")
-            plt.ylabel("y [km]")
+            plt.xlabel("x [Mm]")
+            plt.ylabel("y [Mm]")
             plt.savefig(f"{PLOT_OUT}/{s_idx}/mass_{t_idx:03d}.png", dpi=300)
             plt.close()
 
@@ -97,12 +105,12 @@ for s_idx in range(NENS):
         m_buffer = atm.m.copy()
 
         # Mixing
-        if cfg.dmix > 0:
+        if (cfg.dmix > 0) and (t % cfg.dt_mix == 0):
         	if EMULATION:
         		atm.m = deep.mix(atm.x, atm.m, r=cfg.lmix, m0=cfg.m0)
         	else:
-            		atm.m, dists = mini.mix(atm.x, atm.m, cfg.beta, cfg.dmix, cfg.dt, cfg.dim,
-                             r_cutoff=3 * cfg.lmix, dists_tm1=dists,lbd_c=1.3888888888888888e-05, w=0.00001)
+            		atm.m, dists, rates = mini.mix(atm.x, atm.m, cfg.beta, cfg.dmix, cfg.dt_mix, cfg.dim,
+                             r_cutoff=3 * cfg.lmix, dists_tm1=dists,lbd_c=1e-08, w=0.0000001)
 
         mass_balance = np.abs(np.sum(m_buffer - atm.m))
         if mass_balance > PREC_WARN:
