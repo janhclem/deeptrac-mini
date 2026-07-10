@@ -1,19 +1,42 @@
 """
-DEEPTRAC is a minimal example to study particle dispersion and mixing.
-    Copyright (C) 2026  Jan Clemens
+DEEPTRACLIB - Deep learning emulator for particle mixing.
 
-    This program is free software: you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation, either version 3 of the License, or
-    (at your option) any later version.
+This library provides a Graph Neural Network (GNN) emulator for the particle
+mass-transfer (mixing) scheme in MINITRAC. It replaces the deterministic
+physics-based mixing with a learned statistical surrogate.
 
-    This program is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
+The DeepMix model follows an Encoder-Processor-Decoder paradigm with message
+passing in latent space. Particles are structured as a graph where edges
+connect particles within a radius aligned to the mixing length.
 
-    You should have received a copy of the GNU General Public License
-    along with this program.  If not, see <https://www.gnu.org/licenses/>.
+Copyright (C) 2026 Jan Clemens
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+Examples
+--------
+>>> import deeptraclib as deeptrac
+>>> import minitraclib as mini
+>>> cfg = mini.Config()
+>>> atm = mini.Atm()
+>>> atm.init(cfg)
+>>> # Create graph data
+>>> data_graph = create_graph(atm.x, atm.m, cfg.lmix, cfg.m0)
+>>> # Initialize model
+>>> deepmix = deeptrac.DeepMix(data_graph)
+>>> # Run inference
+>>> u, dm = deepmix(data_graph)
 """
 
 import torch
@@ -106,23 +129,59 @@ class DeepMix(torch.nn.Module):
         return u, u_agg
 
 
-def mix( x,  m, r, m0=1.0, weights_file= "./deepmix.weights.0"):
+def mix(x, m, r, m0=1.0, weights_file="./deepmix.weights.0"):
+    """
+    Perform mixing using the deep learning emulator.
 
-	# Construct the graph from x, m and r
-	f_graph    = torch.from_numpy(np.concatenate([x, m[:, None]], axis=1)).float()
-	pos_graph  = torch.from_numpy(x).float()
-	edge_index = radius_graph(pos_graph, r=r, batch=None, loop=False)
-	data_graph = Data(x=f_graph, edge_index=edge_index, pos=pos_graph)
-	i, j = data_graph.edge_index
-	norm = torch.tensor([r, r, m0])
-	data_graph.edge_attr = ((data_graph.x[j] - data_graph.x[i]) / norm).float()
+    This function constructs a graph from particle positions and masses,
+    then uses the trained DeepMix GNN to predict mass changes.
 
-	deepmix = DeepMix(data_graph)
-	deepmix.load_state_dict(torch.load(weights_file, weights_only=True))
-	deepmix.eval()
-	
-	return m + deepmix(data_graph)[1].detach().numpy()
-	
+    Parameters
+    ----------
+    x : np.ndarray, shape (n, dim)
+        Particle positions (m).
+    m : np.ndarray, shape (n,)
+        Particle masses (kg).
+    r : float
+        Graph edge radius (m). Particles within this radius are connected.
+    m0 : float, optional
+        Normalization mass (kg). Default is 1.0.
+    weights_file : str, optional
+        Path to trained model weights. Default is "./deepmix.weights.0".
+
+    Returns
+    -------
+    np.ndarray, shape (n,)
+        Updated particle masses after mixing.
+
+    Notes
+    -----
+    This function loads the model weights each time it's called. For better
+    performance in production, consider loading the model once and reusing it.
+
+    Examples
+    --------
+    >>> import deeptraclib as deeptrac
+    >>> import numpy as np
+    >>> x = np.random.uniform(0, 100000, size=(1000, 2))
+    >>> m = np.ones(1000)
+    >>> m_new = deeptrac.mix(x, m, r=10000, m0=1.0)
+    """
+    # Construct the graph from x, m and r
+    f_graph = torch.from_numpy(np.concatenate([x, m[:, None]], axis=1)).float()
+    pos_graph = torch.from_numpy(x).float()
+    edge_index = radius_graph(pos_graph, r=r, batch=None, loop=False)
+    data_graph = Data(x=f_graph, edge_index=edge_index, pos=pos_graph)
+    i, j = data_graph.edge_index
+    norm = torch.tensor([r, r, m0])
+    data_graph.edge_attr = ((data_graph.x[j] - data_graph.x[i]) / norm).float()
+
+    deepmix = DeepMix(data_graph)
+    deepmix.load_state_dict(torch.load(weights_file, weights_only=True))
+    deepmix.eval()
+
+    return m + deepmix(data_graph)[1].detach().numpy()
+
 
 def plot_graph(data_graph):
     """Visualize a PyG graph overlaid on particle positions."""

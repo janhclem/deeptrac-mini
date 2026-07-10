@@ -1,19 +1,39 @@
 """
-DEEPTRAC is a minimal example to study particle dispersion and mixing.
-    Copyright (C) 2026  Jan Clemens
+Training script for the DeepMix GNN emulator.
 
-    This program is free software: you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation, either version 3 of the License, or
-    (at your option) any later version.
+This script trains the DeepMix Graph Neural Network to emulate the
+particle mass-transfer (mixing) scheme from MINITRAC. It loads training
+data from MINITRAC ensemble runs, constructs graphs, and trains the model
+using supervised learning.
 
-    This program is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
+Copyright (C) 2026 Jan Clemens
 
-    You should have received a copy of the GNU General Public License
-    along with this program.  If not, see <https://www.gnu.org/licenses/>.
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+Usage
+-----
+Run training with default parameters:
+    python training.py
+
+Run with custom parameters:
+    python training.py --batch-size 16 --iterations 100000
+
+Notes
+-----
+Training data should be generated first by running minitrac.py to create
+NPZ files in the ./out/ directory. The script expects files matching the
+pattern ./out/*/*.npz.
 """
 
 import csv
@@ -142,7 +162,7 @@ for epoch in range(epochs):
             total_loss += loss + LAMBDA * mass_penalty
             total_mse  += loss.item()
             print(f"loss={loss.item():.5f}  raw_penalty={mass_penalty.item():.5f}  weighted={LAMBDA*mass_penalty.item():.5f}  N={data_graph.num_nodes}")
-        
+
         (total_loss / len(batch_files)).backward()
         torch.nn.utils.clip_grad_norm_(deepmix.parameters(), max_norm=1.0)
         optimizer.step()

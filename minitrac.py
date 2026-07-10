@@ -1,67 +1,67 @@
 """
-MINITRAC is a minimal example to study particle dispersion and mixing.
-    Copyright (C) 2026  Jan Clemens
+MINITRAC - Main simulation driver for particle dispersion and mixing.
 
-    This program is free software: you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation, either version 3 of the License, or
-    (at your option) any later version.
+This script runs ensemble simulations of particle dispersion and mixing
+using either the physics-based mixing scheme or the deep learning emulator.
 
-    This program is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
+Copyright (C) 2026 Jan Clemens
 
-    You should have received a copy of the GNU General Public License
-    along with this program.  If not, see <https://www.gnu.org/licenses/>.
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+Usage
+-----
+Run with default gyre configuration:
+    python minitrac.py
+
+Run with jet configuration:
+    python minitrac.py --config jet_large
+
+Run with emulation (set emulation=true in the INI file):
+    python minitrac.py --config jet_large_emulation.ini
+
+Run with custom number of ensemble members:
+    python minitrac.py --config gyre_100km --nens 10
 """
-
 import minitraclib as mini
 import deeptraclib as deep
 from functools import partial
 from tqdm import tqdm
 import numpy as np
 import os
-import matplotlib.pylab as plt
 from cmcrameri import cm
 
 
-EMULATION = False
+# Parse command line arguments
+command = mini.Command()
+args = command.args
 
-if EMULATION:
-	DIR_OUT = "./out_emulation"
-	PLOT_OUT = "./plot_emulation"
-else:
-	DIR_OUT = "./out"
-	PLOT_OUT = "./plot"
+# Load configuration from INI file
+print(f"[INFO] Loading configuration: {args.config}")
+cfg = mini.Config.read_ini(args.config)
+cfg.show()
 
-NENS = 999
-PREC_WARN = 1e-14
+# Get simulation settings from config
+NENS = args.nens
 
 for s_idx in range(NENS):
-    print(f"[INFO] Starting scenario {s_idx} of {NENS}")
-
-    cfg = mini.Config()
-    cfg.u0 = np.random.uniform(5, 25)
-    cfg.u0 = 62.66
-    cfg.lx = 6371000*np.pi
-    cfg.dt = 1800
-    cfg.dt_mix = 24*3600
-    #cfg.dmix = 0
-    cfg.tmax = 1800*48*30
-    cfg.dt_plot = cfg.dt_mix
-    cfg.show()
+    print(f"[INFO] Starting scenario {s_idx} of {NENS - 1}")
 
     atm = mini.Atm()
     atm.init(cfg)
     dists = None
     rates = None
-    
-    #if s_idx%2:
-    # 	atm.init_mass_gauss(cfg)
-    #else:
-    #	atm.mod_mass(cfg)
-    	
+
     atm.init_mass_gradient(cfg)
 
     gyre_ = partial(mini.gyre, lx=cfg.lx, u0=cfg.u0)
@@ -70,52 +70,38 @@ for s_idx in range(NENS):
     print("[INFO] Starting time loop.")
     for t_idx, t in tqdm(enumerate(np.arange(0, cfg.tmax + cfg.dt, cfg.dt))):
 
-	# Plotting...
+        # Plotting...
         if t % cfg.dt_plot == 0:
-            os.makedirs(f"{PLOT_OUT}/{s_idx}/", exist_ok=True)
-            plt.figure()
-            #sct = plt.scatter(atm.x[:, 0] / 1000**2, atm.x[:, 1] / 1000**2,
-            #                  c=atm.m, vmin=0, vmax=1, cmap=cm.glasgow, s=1)
-            #if rates is None:
-            z = atm.m
-            sct = plt.tricontourf(atm.x[:, 0] / 1000/1000, atm.x[:, 1] / 1000/1000, atm.m, cmap=cm.glasgow, levels=500, vmin=0, vmax=1)
-            #else:
-            #	z = rates
-            #	sct = plt.scatter(atm.x[:, 0] / 1000/1000, atm.x[:, 1] / 1000/1000, c=z, cmap=cm.vik, vmin=-2e-8, vmax=2e-8, s=0.3)
-            
-            plt.colorbar(sct)
-            plt.xlabel("x [Mm]")
-            plt.ylabel("y [Mm]")
-            plt.savefig(f"{PLOT_OUT}/{s_idx}/mass_{t_idx:03d}.png", dpi=300)
-            plt.close()
+            atm.plot(s_idx=s_idx, z=atm.m, cmap=cm.glasgow, levels=500, vmin=0, vmax=1,
+                     save_path=f"{cfg.dir_plot}/{s_idx}/mass_{t_idx:03d}.png", dpi=300)
 
         # Advection
-        # vel = gyre_(atm.x)
-        vel = mini.jet(atm.x,lx=cfg.lx, U0=cfg.u0, t=t)
+        vel = mini.jet(atm.x, lx=cfg.lx, U0=cfg.u0, t=t)
         atm.x += vel * cfg.dt
 
         # First-order dispersion (random walk)
         atm.x += 2 * np.sqrt(cfg.ddiff0 * cfg.dt) * np.random.normal(0, 1, size=atm.x.shape)
 
         # Enforce domain boundaries
-        #atm.x = np.clip(atm.x, a_min=0, a_max=cfg.lx)
-        atm.x[:,0][atm.x[:,0] > cfg.lx] -=  cfg.lx
-        atm.x[:,0][atm.x[:,0] < 0] += cfg.lx
+        atm.check_boundaries(cfg, method=cfg.boundary_method)
 
         m_buffer = atm.m.copy()
 
         # Mixing
         if (cfg.dmix > 0) and (t % cfg.dt_mix == 0):
-        	if EMULATION:
-        		atm.m = deep.mix(atm.x, atm.m, r=cfg.lmix, m0=cfg.m0)
-        	else:
-            		atm.m, dists, rates = mini.mix(atm.x, atm.m, cfg.beta, cfg.dmix, cfg.dt_mix, cfg.dim,
-                             r_cutoff=3 * cfg.lmix, dists_tm1=dists,lbd_c=1e-08, w=0.0000001)
+            if cfg.mixing_type == 'emulation':
+                atm.m = deep.mix(atm.x, atm.m, r=cfg.lmix, m0=cfg.m0)
+            elif cfg.mixing_type == 'steering':
+                atm.m, dists, rates = mini.mix_steering(atm.x, atm.m, cfg.beta, cfg.dmix, cfg.dt_mix,
+                                                      cfg.dim, r_cutoff=3 * cfg.lmix, dists_tm1=dists,
+                                                      lbd_c=1e-08, w=0.0000001)
+            else:  # default
+                atm.m = mini.mix(atm.x, atm.m, cfg.beta, cfg.dmix, cfg.dt, cfg.dim, r_cutoff=3 * cfg.lmix)
 
         mass_balance = np.abs(np.sum(m_buffer - atm.m))
-        if mass_balance > PREC_WARN:
+        if mass_balance > cfg.prec_warn:
             print(f"[WARNING] Mass not conserved: residual = {mass_balance:.2e}")
 
-        os.makedirs(f"{DIR_OUT}/{s_idx}/", exist_ok=True)
-        np.savez(f"{DIR_OUT}/{s_idx}/data_{t_idx:03d}.npz",
+        os.makedirs(f"{cfg.dir_out}/{s_idx}/", exist_ok=True)
+        np.savez(f"{cfg.dir_out}/{s_idx}/data_{t_idx:03d}.npz",
                  x=atm.x, m=m_buffer, m_=atm.m)
