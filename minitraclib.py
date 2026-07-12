@@ -54,7 +54,7 @@ class Command():
 		self.parser.add_argument(
 		    "--config", "-c",
 		    type=str,
-		    default="gyre_100km",
+		    default="bickley_jet",
 		    help="Configuration file name (with or without .ini extension)"
 		)
 		self.parser.add_argument(
@@ -805,6 +805,40 @@ def gyre(x, lx, u0):
     v =  np.pi * u0 * np.cos(arg_x) * np.sin(arg_y)
 
     return np.stack((u, v), axis=-1)
+
+
+def dispersion(x, ddiff0, dt):
+    """
+    Apply first-order dispersion (random walk) to particle positions.
+
+    Particles undergo a random walk with diffusivity ddiff0, following
+    the Einstein-Smoluchowski relation: <dx^2> = 2 * ddiff0 * dt.
+
+    Parameters
+    ----------
+    x : np.ndarray, shape (n, dim)
+        Particle positions (m).
+    ddiff0 : float
+        First-order dispersion diffusivity (m^2/s).
+    dt : float
+        Time step (s).
+
+    Returns
+    -------
+    np.ndarray, shape (n, dim)
+        Random displacement vectors (m).
+
+    Notes
+    -----
+    The displacement follows a Gaussian distribution with zero mean and
+    variance 2 * ddiff0 * dt, consistent with Fickian diffusion.
+
+    Examples
+    --------
+    >>> displacement = mini.dispersion(atm.x, cfg.ddiff0, cfg.dt)
+    >>> atm.x += displacement
+    """
+    return 2 * np.sqrt(ddiff0 * dt) * np.random.normal(0, 1, size=x.shape)
 
 def jet(x, t, U0, lx, L=1770000, re=6371000,
                  A=(0.0075, 0.15, 0.3),

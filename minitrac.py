@@ -65,24 +65,29 @@ for s_idx in range(NENS):
     atm.init_mass_gradient(cfg)
 
     gyre_ = partial(mini.gyre, lx=cfg.lx, u0=cfg.u0)
-    kernel_ = partial(mini.kernel, beta=cfg.beta, dim=cfg.dim, d=cfg.dmix, dt=cfg.dt)
+    kernel_ = partial(mini.kernel, 
+    		beta=cfg.beta, 
+    		dim=cfg.dim, 
+    		d=cfg.dmix, 
+    		dt=cfg.dt)
 
     print("[INFO] Starting time loop.")
     for t_idx, t in tqdm(enumerate(np.arange(0, cfg.tmax + cfg.dt, cfg.dt))):
 
         # Plotting...
         if t % cfg.dt_plot == 0:
-            atm.plot(s_idx=s_idx, z=atm.m, cmap=cm.glasgow, levels=500, vmin=0, vmax=1,
-                     save_path=f"{cfg.dir_plot}/{s_idx}/mass_{t_idx:03d}.png", dpi=300)
+            atm.plot(s_idx=s_idx, z=atm.m, cmap=cm.glasgow, 
+              levels=500, vmin=0, vmax=1,
+              save_path=f"{cfg.dir_plot}/{s_idx}/mass_{t_idx:03d}.png", dpi=300)
 
-        # Advection
+        # Advection...
         vel = mini.jet(atm.x, lx=cfg.lx, U0=cfg.u0, t=t)
         atm.x += vel * cfg.dt
 
-        # First-order dispersion (random walk)
-        atm.x += 2 * np.sqrt(cfg.ddiff0 * cfg.dt) * np.random.normal(0, 1, size=atm.x.shape)
+        # First-order dispersion (random walk)...
+        atm.x += mini.dispersion(atm.x, cfg.ddiff0, cfg.dt)
 
-        # Enforce domain boundaries
+        # Enforce domain boundaries...
         atm.check_boundaries(cfg, method=cfg.boundary_method)
 
         m_buffer = atm.m.copy()
@@ -92,11 +97,13 @@ for s_idx in range(NENS):
             if cfg.mixing_type == 'emulation':
                 atm.m = deep.mix(atm.x, atm.m, r=cfg.lmix, m0=cfg.m0)
             elif cfg.mixing_type == 'steering':
-                atm.m, dists, rates = mini.mix_steering(atm.x, atm.m, cfg.beta, cfg.dmix, cfg.dt_mix,
-                                                      cfg.dim, r_cutoff=3 * cfg.lmix, dists_tm1=dists,
-                                                      lbd_c=cfg.lbd_c, w=cfg.w)
-            else:  # default
-                atm.m = mini.mix(atm.x, atm.m, cfg.beta, cfg.dmix, cfg.dt, cfg.dim, r_cutoff=3 * cfg.lmix)
+                atm.m, dists, rates = mini.mix_steering(atm.x, atm.m, 
+                cfg.beta, cfg.dmix, cfg.dt_mix,
+                cfg.dim, r_cutoff=3 * cfg.lmix, 
+                dists_tm1=dists, lbd_c=cfg.lbd_c, w=cfg.w)
+            else: 
+                atm.m = mini.mix(atm.x, atm.m, cfg.beta, cfg.dmix, 
+                cfg.dt, cfg.dim, r_cutoff=3 * cfg.lmix)
 
         mass_balance = np.abs(np.sum(m_buffer - atm.m))
         if mass_balance > cfg.prec_warn:

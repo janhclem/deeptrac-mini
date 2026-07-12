@@ -10,9 +10,7 @@ Available configurations:
 
 Usage:
     import minitraclib as mini
-    cfg = mini.Config.read_ini('gyre_100km')
-    # or
-    cfg = mini.Config.read_ini('jet_large')
+    cfg = mini.Config.read_ini('bickley_jet')
     # or with full path
     cfg = mini.Config.read_ini('/path/to/custom.ini')
 """
