@@ -87,14 +87,14 @@ for s_idx in range(NENS):
 
         m_buffer = atm.m.copy()
 
-        # Mixing
+        # Mixing...
         if (cfg.dmix > 0) and (t % cfg.dt_mix == 0):
             if cfg.mixing_type == 'emulation':
                 atm.m = deep.mix(atm.x, atm.m, r=cfg.lmix, m0=cfg.m0)
             elif cfg.mixing_type == 'steering':
                 atm.m, dists, rates = mini.mix_steering(atm.x, atm.m, cfg.beta, cfg.dmix, cfg.dt_mix,
                                                       cfg.dim, r_cutoff=3 * cfg.lmix, dists_tm1=dists,
-                                                      lbd_c=1e-08, w=0.0000001)
+                                                      lbd_c=cfg.lbd_c, w=cfg.w)
             else:  # default
                 atm.m = mini.mix(atm.x, atm.m, cfg.beta, cfg.dmix, cfg.dt, cfg.dim, r_cutoff=3 * cfg.lmix)
 

@@ -336,6 +336,8 @@ class Config():
         dmix = get_value('MIXING', 'dmix', float, 12500 * 100**2 / 2.0)
         ddiff0 = get_value('MIXING', 'ddiff0', float, 0.0)
         ddiff1 = get_value('MIXING', 'ddiff1', float, 0.0)
+        lbd_c = get_value('MIXING', 'lbd_c', float, 1e-08)
+        w = get_value('MIXING', 'w', float, 0.0000001)
         
         # ADVECTION section
         u0_str = get_value('ADVECTION', 'u0', str, None)
@@ -380,6 +382,8 @@ class Config():
         cfg.dir_plot = dir_plot
         cfg.prec_warn = prec_warn
         cfg.boundary_method = boundary_method
+        cfg.lbd_c = lbd_c
+        cfg.w = w
         
         return cfg
 

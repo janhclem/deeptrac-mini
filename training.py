@@ -61,7 +61,7 @@ NUM_ITERATIONS  = 500_000
 USE_RESTART     = True
 LAMBDA          = 0.01   # mass-conservation penalty weight
 
-LOG_FILE        = "./training.log"
+LOG_FILE        = "./log/training.log"
 FILES_DATA      = "./out/*/*"
 
 # ---------------------------------------------------------------------------
