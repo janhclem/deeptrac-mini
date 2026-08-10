@@ -28,7 +28,7 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 Examples
 --------
 >>> import minitraclib as mini
->>> cfg = mini.Config()
+>>> cfg = mini.Config.read_ini('gyre_100km')
 >>> atm = mini.Atm()
 >>> atm.init(cfg)
 >>> vel = mini.gyre(atm.x, lx=cfg.lx, u0=cfg.u0)
@@ -40,6 +40,9 @@ import os
 import numpy as np
 from pathlib import Path
 from scipy.spatial import cKDTree
+import os
+import shutil
+from cmcrameri import cm
 
 
 
@@ -54,13 +57,19 @@ class Command():
 		self.parser.add_argument(
 		    "--config", "-c",
 		    type=str,
-		    default="bickley_jet",
+		    default="gyre",
 		    help="Configuration file name (with or without .ini extension)"
+		)
+		self.parser.add_argument(
+		    "--config-folder", "-f",
+		    type=str,
+		    default=None,
+		    help="Folder containing configuration files to loop over"
 		)
 		self.parser.add_argument(
 		    "--nens", "-n",
 		    type=int,
-		    default=999,
+		    default=1,
 		    help="Number of ensemble members (default: 999)"
 		)
 
@@ -72,48 +81,59 @@ class Config():
 
     This class holds all the parameters needed to configure a simulation,
     including domain properties, numerical settings, and physical parameters.
+    All parameters are loaded from INI configuration files.
 
     For new code, consider using the configs module instead, which provides
     predefined configurations for different setups (gyre, jet).
 
-    Parameters
-    ----------
-    lx : float, optional
-        Domain side length (m). Default is 100,000 m (100 km).
-    ly : float or None, optional
-        Domain side length in y-direction (m). Defaults to lx.
-    nump : int, optional
-        Number of particles. Default is 20,000.
-    tmax : float, optional
-        Total simulation time (s). Default is 2000 s.
-    beta : float, optional
-        Mixing kernel shape parameter. Default is 1.0.
-    dim : int, optional
-        Spatial dimensions. Default is 2.
-    dt : float, optional
-        Integration time step (s). Default is 20 s.
-    dt_mix : float, optional
-        Mixing time step (s). Default is 2000 s.
-    dmix : float, optional
-        Mixing diffusivity (m^2/s). Default is 12500 * 100^2 / 2.0.
-    ddiff0 : float, optional
-        First-order dispersion diffusivity (m^2/s). Default is 0.0.
-    ddiff1 : float, optional
-        Second-order dispersion diffusivity (m^2/s). Default is 0.0.
-    u0 : float or None, optional
-        Characteristic wind speed (m/s). If None, computed as
-        lx / sqrt(nump) / dt. Default is None.
-    m0 : float, optional
-        Initial particle mass (kg). Default is 1.0.
-    dt_plot : float, optional
-        Plotting interval (s). Default is 2000 s.
-
     Attributes
     ----------
-    lmix : float
-        Mixing length scale: 2 * sqrt(dmix * dt_mix / beta) (m).
+    lx : float
+        Domain side length in x-direction (m).
+    ly : float
+        Domain side length in y-direction (m).
+    nump : int
+        Number of particles.
     np : int
         Alias for nump for backwards compatibility.
+    tmax : float
+        Total simulation time (s).
+    dt : float
+        Integration time step (s).
+    dt_mix : float
+        Mixing time step (s).
+    dt_plot : float
+        Plotting interval (s).
+    beta : float
+        Mixing kernel shape parameter.
+    dim : int
+        Spatial dimensions.
+    dmix : float
+        Mixing diffusivity (m^2/s).
+    ddiff0 : float
+        First-order dispersion diffusivity (m^2/s).
+    ddiff1 : float
+        Second-order dispersion diffusivity (m^2/s).
+    u0 : float
+        Characteristic wind speed (m/s).
+    m0 : float
+        Initial particle mass (kg).
+    lmix : float
+        Mixing length scale: 2 * sqrt(dmix * dt_mix / beta) (m).
+    mixing_type : str
+        Mixing type: 'default', 'steering', or 'emulation'.
+    dir_out : str
+        Output directory for data files.
+    dir_plot : str
+        Output directory for plots.
+    prec_warn : float
+        Mass conservation warning threshold.
+    boundary_method : str
+        Boundary condition method: 'periodic' or 'clip'.
+    lbd_c : float
+        Critical stretching rate for steering mixing (1/s).
+    w : float
+        Smoothness parameter for steering mixing tanh trigger.
 
     See Also
     --------
@@ -122,78 +142,13 @@ class Config():
 
     Examples
     --------
-    >>> cfg = Config()
+    >>> cfg = Config.read_ini('gyre_100km')
     >>> cfg.show()
     """
 
-    def __init__(self,
-                 lx=100_000,
-                 ly=None,
-                 nump=20_000,
-                 tmax=2000,
-                 beta=1.0,
-                 dim=2,
-                 dt=20,
-                 dt_mix=2000,
-                 dmix=12500*100**2/2.0,
-                 ddiff0=0.0,
-                 ddiff1=0.0,
-                 u0=None,
-                 m0=1.0,
-                 dt_plot=2000):
-        """
-        Initialize simulation configuration.
-
-        Parameters
-        ----------
-        lx : float, optional
-            Domain side length in x-direction (m). Default is 100,000 m (100 km).
-        ly : float or None, optional
-            Domain side length in y-direction (m). Defaults to lx.
-        nump : int, optional
-            Number of particles. Default is 20,000.
-        tmax : float, optional
-            Total simulation time (s). Default is 2000 s.
-        beta : float, optional
-            Mixing kernel shape parameter. Default is 1.0.
-        dim : int, optional
-            Spatial dimensions. Default is 2.
-        dt : float, optional
-            Integration time step (s). Default is 20 s.
-        dt_mix : float, optional
-            Mixing time step (s). Default is 2000 s.
-        dmix : float, optional
-            Mixing diffusivity (m^2/s). Default is 12500 * 100^2 / 2.0.
-        ddiff0 : float, optional
-            First-order dispersion diffusivity (m^2/s). Default is 0.0.
-        ddiff1 : float, optional
-            Second-order dispersion diffusivity (m^2/s). Default is 0.0.
-        u0 : float or None, optional
-            Characteristic wind speed (m/s). If None, computed as
-            lx / sqrt(nump) / dt. Default is None.
-        m0 : float, optional
-            Initial particle mass (kg). Default is 1.0.
-        dt_plot : float, optional
-            Plotting interval (s). Default is 2000 s.
-        """
-        self.lx = lx
-        self.ly = ly if ly is not None else lx  # Square domain by default
-        self.nump = nump
-        self.np = nump  # Alias for backwards compatibility
-        self.tmax = tmax
-        self.beta = beta
-        self.dim = dim
-        self.dt = dt
-        self.dt_mix = dt_mix
-        self.dmix = dmix
-        self.ddiff0 = ddiff0
-        self.ddiff1 = ddiff1
-        self.u0 = lx / (nump ** 0.5) / dt if u0 is None else u0
-        self.m0 = m0
-        self.lmix = 2 * np.sqrt(self.dmix * self.dt_mix / self.beta)
-        self.dt_plot = dt_plot
-        if dt_plot % dt > 0:
-            print("[WARNING] Plotting frequency must be a multiple of integration timestep.")
+    def __init__(self):
+        """Initialize an empty Config object. Use read_ini() to load from file."""
+        pass
 
     def show(self):
         """Print all configuration parameters and characteristic length scales."""
@@ -201,10 +156,11 @@ class Config():
         for key, value in self.__dict__.items():
             print(f"  {key}: {value}")
         print("[INFO] Characteristic lengths:")
-        print(f"  Mixing length:             {2 * np.sqrt(self.dmix * self.dt / self.beta):.1f} m")
+        print(f"  Mixing length:             {6 * np.sqrt(self.dmix * self.dt_mix / self.beta):.1f} m")
         print(f"  Advection length:          {self.u0 * self.dt:.1f} m")
         print(f"  Dispersion length (1st):   {2 * np.sqrt(self.ddiff0 * self.dt):.1f} m")
         print(f"  Dispersion length (2nd):   {2 * np.sqrt(self.ddiff1 * self.dt):.1f} m")
+        print(f"  Mean distance: {np.sqrt(self.lx*self.ly/self.nump)/1000.0} km")
 
     @classmethod
     def read_ini(cls, filename=None):
@@ -353,35 +309,58 @@ class Config():
         
         # SIMULATION section (for run-time settings)
         mixing_type = get_value('SIMULATION', 'mixing_type', str, 'default')
+        flow_type = get_value('SIMULATION', 'flow_type', str, 'gyre')
+        init_type = get_value('SIMULATION', 'init_type', str, 'gradient')
         dir_out = get_value('SIMULATION', 'dir_out', str, './out')
         dir_plot = get_value('SIMULATION', 'dir_plot', str, './plot')
         prec_warn = get_value('SIMULATION', 'prec_warn', float, 1e-14)
         boundary_method = get_value('SIMULATION', 'boundary_method', str, 'periodic')
         
         # Create the Config object
-        cfg = cls(
-            lx=lx,
-            ly=ly,
-            nump=nump,
-            tmax=tmax,
-            beta=beta,
-            dim=dim,
-            dt=dt,
-            dt_mix=dt_mix,
-            dmix=dmix,
-            ddiff0=ddiff0,
-            ddiff1=ddiff1,
-            u0=u0,
-            m0=m0,
-            dt_plot=dt_plot
-        )
+        cfg = cls()
         
-        # Add simulation attributes to the config object
+        # Set all DOMAIN parameters
+        cfg.lx = lx
+        cfg.ly = ly if ly is not None else lx  # Square domain by default
+        
+        # Set NUMERICS parameters
+        cfg.nump = nump
+        cfg.np = nump  # Alias for backwards compatibility
+        
+        # Set TIME parameters
+        cfg.tmax = tmax
+        cfg.dt = dt
+        cfg.dt_mix = dt_mix
+        cfg.dt_plot = dt_plot
+        if dt_plot % dt > 0:
+            print("[WARNING] Plotting frequency must be a multiple of integration timestep.")
+        
+        # Set PHYSICS parameters
+        cfg.beta = beta
+        cfg.dim = dim
+        
+        # Set MIXING parameters
+        cfg.dmix = dmix
+        cfg.ddiff0 = ddiff0
+        cfg.ddiff1 = ddiff1
+        cfg.lmix = 2 * np.sqrt(dmix * dt_mix / beta)
+        
+        # Set ADVECTION parameters
+        if u0 is None:
+            u0 = lx / (nump ** 0.5) / dt
+        cfg.u0 = u0
+        cfg.m0 = m0
+        
+        # Set SIMULATION parameters
         cfg.mixing_type = mixing_type
+        cfg.flow_type = flow_type
+        cfg.init_type = init_type
         cfg.dir_out = dir_out
         cfg.dir_plot = dir_plot
         cfg.prec_warn = prec_warn
         cfg.boundary_method = boundary_method
+        
+        # Set STEERING parameters
         cfg.lbd_c = lbd_c
         cfg.w = w
         
@@ -397,7 +376,12 @@ class Atm():
 
     def init(self, config):
         """Initialize particles on a uniform random distribution with constant mass."""
-        self.x = np.random.uniform([0,config.lx/4.0], [config.lx, config.lx*3/4], size=(config.np, config.dim))
+        if config.flow_type == "jet":
+        	print("[INFO]: For the jet flow initialisation is constraint in y direction.")
+        	self.x = np.random.uniform([0,config.lx/4.0], [config.lx, config.lx*3/4], size=(config.np, config.dim))
+        else:
+        	self.x = np.random.uniform([0,0], [config.lx, config.lx], size=(config.np, config.dim))
+        	
         self.m = np.ones(shape=config.np) * config.m0
 
     def mod_mass(self, config, noise=False, method="half", **method_config):
@@ -459,8 +443,160 @@ class Atm():
         sigma = np.random.uniform(0.1, 0.2) * config.lx**2
         self.m = config.m0 * np.exp(-r2 / sigma)
 
+    def init_mass_three_gauss(self, config):
+        """
+        Initialize masses as three Gaussian distributions randomly placed.
+        All values are normalized to be between 0 and 1.
+
+        Parameters
+        ----------
+        config : Config
+            Configuration object.
+        """
+        self.m = np.zeros(config.np)
+        for _ in range(3):
+            x0 = np.random.uniform(0, config.lx)
+            y0 = np.random.uniform(0, config.lx)
+            r2 = (self.x[:, 0] - x0) ** 2 + (self.x[:, 1] - y0) ** 2
+            sigma = np.random.uniform(0.05, 0.15) * config.lx**2
+            self.m += np.exp(-r2 / sigma)
+        # Normalize and clip to [0, 1]
+        self.m = np.clip(self.m / np.max(self.m), 0, 1)
+
+    def init_mass_smiley(self, config):
+        """
+        Initialize masses as a smiley face pattern.
+        Values are between 0 and 1.
+
+        Parameters
+        ----------
+        config : Config
+            Configuration object.
+        """
+        self.m = np.zeros(config.np)
+        cx, cy = config.lx / 2, config.ly / 2
+        face_radius = config.lx * 0.4
+        
+        # Face circle
+        r2_face = (self.x[:, 0] - cx) ** 2 + (self.x[:, 1] - cy) ** 2
+        in_face = r2_face < face_radius ** 2
+        self.m[in_face] = 1.0
+        
+        # Eyes
+        eye_radius = config.lx * 0.08
+        eye_offset_y = config.lx * 0.12
+        eye_offset_x = config.lx * 0.15
+        for ex in [cx - eye_offset_x, cx + eye_offset_x]:
+            eye_r2 = (self.x[:, 0] - ex) ** 2 + (self.x[:, 1] - (cy + eye_offset_y)) ** 2
+            in_eye = eye_r2 < eye_radius ** 2
+            self.m[in_eye] = 0.0
+        
+        # Mouth - a parabolic curve opening upward at the bottom of the face
+        mouth_center_y = cy - config.lx * 0.15
+        mouth_width = config.lx * 0.3
+        mouth_depth = config.lx * 0.08
+        # Parabola: y = a*(x-cx)^2 + k, particles below the parabola are the mouth
+        a = 1.0 / (mouth_width ** 2)
+        parabola_y = a * (self.x[:, 0] - cx) ** 2 + mouth_center_y
+        in_mouth = (self.x[:, 1] < parabola_y) & (self.x[:, 1] > parabola_y - mouth_depth) & in_face
+        self.m[in_mouth] = 0.0
+        
+        self.m = np.clip(self.m, 0, 1)
+
+    def init_mass_checkerboard(self, config, n_squares=8, smoothness=0.1):
+        """
+        Initialize masses as a smoothed checkerboard pattern.
+        Values are between 0 and 1.
+
+        Parameters
+        ----------
+        config : Config
+            Configuration object.
+        n_squares : int, optional
+            Number of squares per side. Default is 8.
+        smoothness : float, optional
+            Smoothing factor (0 = sharp, higher = smoother). Default is 0.1.
+        """
+        # Create checkerboard based on position
+        square_size = config.lx / n_squares
+        
+        # Calculate which square each particle is in (with floating point for smoothing)
+        x_pos = self.x[:, 0] / square_size
+        y_pos = self.x[:, 1] / square_size
+        
+        if smoothness > 0:
+            # Smooth checkerboard using sine functions
+            # For each dimension, create a smooth square wave
+            x_smooth = np.sin(2 * np.pi * x_pos / 2) ** 2
+            y_smooth = np.sin(2 * np.pi * y_pos / 2) ** 2
+            # Combine: checkerboard pattern
+            self.m = (x_smooth + y_smooth) / 2
+        else:
+            # Sharp checkerboard
+            x_idx = np.floor(x_pos).astype(int)
+            y_idx = np.floor(y_pos).astype(int)
+            self.m = ((x_idx + y_idx) % 2).astype(float)
+        
+        self.m = np.clip(self.m, 0, 1)
+
+    def init_mass_stripes(self, config, n_stripes=10, smoothness=0.0, direction=0):
+        """
+        Initialize masses as stripes (alternating bands).
+        Values are between 0 and 1.
+
+        Parameters
+        ----------
+        config : Config
+            Configuration object.
+        n_stripes : int, optional
+            Number of stripes. Default is 10.
+        smoothness : float, optional
+            Smoothing factor for stripe edges (0 = sharp). Default is 0.0.
+        direction : int, optional
+            0 for horizontal stripes, 1 for vertical. Default is 0.
+        """
+        if direction == 0:  # Horizontal stripes
+            pos = self.x[:, 1]
+        else:  # Vertical stripes
+            pos = self.x[:, 0]
+        
+        # Normalized position [0, 1]
+        pos_norm = pos / config.lx
+        
+        # Determine which stripe each particle is in
+        stripe_idx = np.floor(pos_norm * n_stripes).astype(int)
+        
+        # Base pattern: alternating 0 and 1
+        self.m = (stripe_idx % 2).astype(float)
+        
+        # Apply smoothing at stripe boundaries if requested
+        if smoothness > 0:
+            # For each particle, find its position within its stripe [0, 1]
+            fractional_pos = (pos_norm * n_stripes) - stripe_idx
+            # Create smooth transition near boundaries (within smoothness fraction)
+            for i in range(config.np):
+                if fractional_pos[i] < smoothness:
+                    # Blend from 1 to 0 at left edge
+                    self.m[i] = fractional_pos[i] / smoothness
+                elif fractional_pos[i] > 1 - smoothness:
+                    # Blend from 0 to 1 at right edge
+                    self.m[i] = (1 - fractional_pos[i]) / smoothness
+        
+        self.m = np.clip(self.m, 0, 1)
+
+    def init_mass_random(self, config):
+        """
+        Initialize masses with pure randomness between 0 and 1.
+
+        Parameters
+        ----------
+        config : Config
+            Configuration object.
+        """
+        self.m = np.random.uniform(0, 1, size=config.np)
+
     def plot(self, s_idx=0, z=None, cmap=None, levels=500, vmin=0, vmax=1,
-             dpi=300, save_path=None, show=False):
+             dpi=300, save_path=None, show=False, vel=None, scatter=True, lx=None):
         """
         Plot the particle mass distribution using tricontourf.
 
@@ -520,8 +656,15 @@ class Atm():
 
         fig = plt.figure()
         sct = plt.tricontourf(x_km, y_km, z, cmap=cmap, levels=levels, vmin=vmin, vmax=vmax)
+        plt.scatter(x_km, y_km, c="r", s=0.1)
+        
+        if vel is not None:
+        	plt.quiver(x_km, y_km, vel.T[0], vel.T[1])
 
         plt.colorbar(sct)
+        if lx is not None:
+        	plt.xlim( 0, lx)
+        	plt.ylim( 0, lx)
         plt.xlabel("x [km]")
         plt.ylabel("y [km]")
 
@@ -669,12 +812,14 @@ def mix_steering(x, m, beta, dmix, dt_mix, dim, r_cutoff=None, dists_tm1=None,
 
     tree = cKDTree(x)
     pairs = list(tree.query_pairs(r_cutoff))
+    print(len(pairs))
 
     dists_tm1 = dists_tm1 if dists_tm1 is not None else {}
 
     dists = {}
     i_arr = j_arr = np.zeros(0, dtype=int)
     p_vals = np.zeros(0)
+    
 
     if pairs:
         i_arr, j_arr = np.array(pairs).T
@@ -700,7 +845,7 @@ def mix_steering(x, m, beta, dmix, dt_mix, dim, r_cutoff=None, dists_tm1=None,
     diag_norm_const = (4 * np.pi * dmix * dt_mix / beta) ** (-dim / 2)
 
     p = np.zeros((n, n))
-    r = np.zeros((n, n))
+    r = np.full((n, n), np.inf)
     np.fill_diagonal(p, diag_norm_const)
     if pairs:
         p[i_arr, j_arr] = p_vals
@@ -708,8 +853,8 @@ def mix_steering(x, m, beta, dmix, dt_mix, dim, r_cutoff=None, dists_tm1=None,
         r[i_arr, j_arr] = rate
         r[j_arr, i_arr] = rate
 
-    rates = np.mean(r,axis=0)
-    print(np.max(np.abs(rates)))
+    rates = -np.min(r, axis=0)
+    rates[np.isinf(rates)] = 0.0 
 
     p /= (np.sum(p, axis=1, keepdims=True) + np.sum(p, axis=0, keepdims=True)) * 0.5
 
@@ -750,7 +895,7 @@ def mix(x, m, beta, dmix, dt, dim, r_cutoff=None):
     """
     n = len(x)
     if r_cutoff is None:
-        r_cutoff = 3 * 2 * np.sqrt(dmix * dt / beta)
+        r_cutoff = 6 * np.sqrt(dmix * dt_mix / beta)
 
     tree = cKDTree(x)
     pairs = tree.query_pairs(r_cutoff)
@@ -780,9 +925,9 @@ def mix(x, m, beta, dmix, dt, dim, r_cutoff=None):
 def gyre(x, lx, u0):
     """
     Evaluate the analytical double-gyre velocity field.
-
-    The stream function is psi = u0 * sin(2*pi*x/lx) * sin(pi*y/lx),
-    yielding two counter-rotating gyres on the domain [0, lx]².
+    The stream function is psi = lx * u0 * sin(2*pi*x/lx) * sin(pi*y/lx),
+    yielding two counter-rotating gyres on the domain [0, lx]^2.
+    This parametrization is divergence-free (mass-conserving) by construction.
 
     Parameters
     ----------
@@ -798,12 +943,10 @@ def gyre(x, lx, u0):
     np.ndarray, shape (n, 2)
         Velocity vectors (m/s).
     """
-    arg_x = np.pi * x[:, 0] / lx * 2
+    arg_x = 2 * np.pi * x[:, 0] / lx
     arg_y = np.pi * x[:, 1] / lx
-
     u = -np.pi * u0 * np.sin(arg_x) * np.cos(arg_y)
-    v =  np.pi * u0 * np.cos(arg_x) * np.sin(arg_y)
-
+    v = 2 * np.pi * u0 * np.cos(arg_x) * np.sin(arg_y)
     return np.stack((u, v), axis=-1)
 
 
@@ -898,7 +1041,12 @@ def jet(x, t, U0, lx, L=1770000, re=6371000,
     return np.stack((u, v), axis=-1)
 
 
-
+def clean_dir(path):
+	if not os.path.exists(path):
+	    os.makedirs(path)
+	else:
+	    shutil.rmtree(path)           
+	    os.makedirs(path)
 
 
 

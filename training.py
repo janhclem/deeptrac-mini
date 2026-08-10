@@ -53,16 +53,16 @@ import minitraclib as minitrac
 # ---------------------------------------------------------------------------
 # Training configuration
 # ---------------------------------------------------------------------------
-WEIGHTS_FILE    = "./deepmix.weights"
-LR              = 0.00003 #0.0003
-LR_FINAL        = 0.0000625
+WEIGHTS_FILE    = "./weights/deepmix.weights"
+LR              = 0.00003  #0.00003 #
+LR_FINAL        = 0.000003 #0.0000625
 BATCH_SIZE      = 8
 NUM_ITERATIONS  = 500_000
-USE_RESTART     = True
-LAMBDA          = 0.01   # mass-conservation penalty weight
+USE_RESTART     = False
+LAMBDA          = 0.00  # mass-conservation penalty weight
 
 LOG_FILE        = "./log/training.log"
-FILES_DATA      = "./out/*/*"
+FILES_DATA      = "./data/out_gyre/*/*"
 
 # ---------------------------------------------------------------------------
 # Logging
@@ -77,7 +77,7 @@ with open(LOG_FILE, 'w', newline='') as log_file:
 files = list(glob(FILES_DATA))
 np.random.shuffle(files)
 
-cfg = minitrac.Config()
+cfg = minitrac.Config.read_ini("./configs/training_ensemble/checkerboard_3_0_0.0.ini")
 
 # ---------------------------------------------------------------------------
 # Build a sample graph to infer model input dimensions
@@ -90,10 +90,10 @@ atm0_sample.m = sample_data["m"]
 f_sample      = np.concatenate([atm0_sample.x, atm0_sample.m[:, None]], axis=1)
 f_graph       = torch.from_numpy(f_sample).float()
 pos_graph     = torch.from_numpy(atm0_sample.x).float()
-edge_index    = radius_graph(pos_graph, r=cfg.lmix, batch=None, loop=False)
+edge_index    = radius_graph(pos_graph, r=2*cfg.lmix, batch=None, loop=False)
 data_graph    = Data(x=f_graph, edge_index=edge_index, pos=pos_graph)
 i, j          = data_graph.edge_index
-norm          = torch.tensor([cfg.lmix, cfg.lmix, cfg.m0])
+norm          = torch.tensor([2*cfg.lmix, 2*cfg.lmix, cfg.m0])
 data_graph.edge_attr = ((data_graph.x[j] - data_graph.x[i]) / norm).float()
 
 # ---------------------------------------------------------------------------
@@ -114,7 +114,7 @@ scheduler   = ExponentialLR(optimizer, gamma=gamma)
 # ---------------------------------------------------------------------------
 # Global dm normalization constant (estimated from a data sample)
 # ---------------------------------------------------------------------------
-dm_samples = [np.load(f)["m_"] - np.load(f)["m"] for f in files[:200]]
+dm_samples = [np.load(f)["m_"] - np.load(f)["m"] for f in files[:2000]]
 DM_STD = float(np.concatenate(dm_samples).std())
 print(f"[INFO] Global dm_std: {DM_STD:.6f}")
 
@@ -123,7 +123,7 @@ print(f"[INFO] Global dm_std: {DM_STD:.6f}")
 # ---------------------------------------------------------------------------
 atm0 = minitrac.Atm()
 atm1 = minitrac.Atm()
-min_loss = 1.0
+min_loss = 100000.0
 
 print(f"[INFO] Training for {epochs} epochs over {len(files)} files (batch size {BATCH_SIZE}).")
 
@@ -136,6 +136,7 @@ for epoch in range(epochs):
         optimizer.zero_grad()
         total_loss = 0.0
         total_mse  = 0.0
+        mass_budget = 0.0
 
         for f in batch_files:
             data = np.load(f)
@@ -146,12 +147,13 @@ for epoch in range(epochs):
 
             f_graph    = torch.from_numpy(np.concatenate([atm0.x, atm0.m[:, None]], axis=1)).float()
             pos_graph  = torch.from_numpy(atm0.x).float()
-            edge_index = radius_graph(pos_graph, r=cfg.lmix, batch=None, loop=False)
+            edge_index = radius_graph(pos_graph, r=2*cfg.lmix, batch=None, loop=False)
             data_graph = Data(x=f_graph, edge_index=edge_index, pos=pos_graph)
 
             i, j = data_graph.edge_index
-            norm = torch.tensor([cfg.lmix, cfg.lmix, cfg.m0])
+            norm = torch.tensor([2*cfg.lmix, 2*cfg.lmix, cfg.m0])
             data_graph.edge_attr = ((data_graph.x[j] - data_graph.x[i]) / norm).float()
+            #print(data_graph.edge_attr.shape)
 
             _, dm = deepmix(data_graph)
             dm_target = torch.from_numpy(atm1.m).float() - torch.from_numpy(atm0.m).float()
@@ -161,7 +163,10 @@ for epoch in range(epochs):
             mass_penalty = (dm.sum() / (DM_STD * torch.sqrt(torch.tensor(data_graph.num_nodes, dtype=torch.float)))) ** 2
             total_loss += loss + LAMBDA * mass_penalty
             total_mse  += loss.item()
-            print(f"loss={loss.item():.5f}  raw_penalty={mass_penalty.item():.5f}  weighted={LAMBDA*mass_penalty.item():.5f}  N={data_graph.num_nodes}")
+            mass_budget += dm.sum()
+            #if (loss.item()>1.5):
+            #	print(f)
+            	#print(f"loss={loss.item():.5f}  raw_penalty={mass_penalty.item():.5f}  weighted={LAMBDA*mass_penalty.item():.5f}  N={data_graph.num_nodes}")
 
         (total_loss / len(batch_files)).backward()
         torch.nn.utils.clip_grad_norm_(deepmix.parameters(), max_norm=1.0)
@@ -170,6 +175,7 @@ for epoch in range(epochs):
 
         avg_loss = total_mse / len(batch_files)
         nrmse    = np.sqrt(avg_loss)
+        avg_mass_budget = mass_budget/len(batch_files)/len(data["x"])
         if avg_loss < min_loss:
             min_loss = avg_loss
             torch.save(deepmix.state_dict(), WEIGHTS_FILE)
@@ -178,7 +184,7 @@ for epoch in range(epochs):
 
         with open(LOG_FILE, 'a', newline='') as log_file:
             writer = csv.writer(log_file)
-            writer.writerow([datetime.now().isoformat(), f"{avg_loss:.6f}"])
+            writer.writerow([datetime.now().isoformat(), f"{epoch:04d}", f"{ind:06d}", f"{avg_loss:.6f}", f"{avg_mass_budget:.4f}" , f"{nrmse:.4f}"])
 
 torch.save(deepmix.state_dict(), WEIGHTS_FILE)
 print(f"[INFO] Training complete. Best NRMSE: {np.sqrt(min_loss):.4f}")

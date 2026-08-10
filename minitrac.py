@@ -30,85 +30,135 @@ Run with jet configuration:
 Run with emulation (set emulation=true in the INI file):
     python minitrac.py --config jet_large_emulation.ini
 
-Run with custom number of ensemble members:
-    python minitrac.py --config gyre_100km --nens 10
+Run with all configs from a folder (NENS = number of config files):
+    python minitrac.py --config-folder configs/gyre
 """
 import minitraclib as mini
 import deeptraclib as deep
-from functools import partial
+
 from tqdm import tqdm
 import numpy as np
 import os
 from cmcrameri import cm
 
-
-# Parse command line arguments
+# Parse command line arguments...
 command = mini.Command()
 args = command.args
+restart_s_idx = 992
+stop_s_idx = 992
 
-# Load configuration from INI file
-print(f"[INFO] Loading configuration: {args.config}")
-cfg = mini.Config.read_ini(args.config)
-cfg.show()
+# Check if we should loop over a folder of configs
+if args.config_folder:
+	import glob
+	config_files = sorted(glob.glob(f"{args.config_folder}/*.ini"))
+	if not config_files:
+		print(f"[ERROR] No .ini files found in folder: {args.config_folder}")
+		exit(1)
+	print(f"[INFO] Found {len(config_files)} configuration files in {args.config_folder}")
+else:
+	# Single config file mode
+	config_files = [args.config]
 
-# Get simulation settings from config
-NENS = args.nens
+for s_idx, config_file in enumerate(config_files):
 
-for s_idx in range(NENS):
-    print(f"[INFO] Starting scenario {s_idx} of {NENS - 1}")
+	# Handle both folder mode and single file mode
+	if args.config_folder:
+		config_name = os.path.basename(config_file)[:-4]
+		print(f"\n[INFO] Loading configuration {s_idx}: {config_name}")
+		cfg = mini.Config.read_ini(config_file)
+	else:
+		print(f"[INFO] Loading configuration {s_idx}: {args.config}")
+		cfg = mini.Config.read_ini(args.config)
+	
+	if s_idx < restart_s_idx:
+		continue
+	if s_idx > stop_s_idx:
+		break
+		
+	cfg.show()
+	
+	# Initialize atmosphere...
+	atm = mini.Atm()
+	atm.init(cfg)
+	dists = None
+	rates = None
+	
+	# Select mass initialization...
+	if cfg.init_type == "gradient":
+		atm.init_mass_gradient(cfg)
+	elif cfg.init_type == "sharp":
+		atm.mod_mass(cfg)
+	elif cfg.init_type == "gauss" or cfg.init_type == "gaussian":
+		atm.init_mass_gauss(cfg)
+	elif cfg.init_type == "three_gauss" or cfg.init_type == "three_gaussians":
+		atm.init_mass_three_gauss(cfg)
+	elif cfg.init_type == "smiley":
+		atm.init_mass_smiley(cfg)
+	elif cfg.init_type == "checkerboard" or cfg.init_type == "checkerboard_8":
+		atm.init_mass_checkerboard(cfg, n_squares=8)
+	elif cfg.init_type == "checkerboard_3":
+		atm.init_mass_checkerboard(cfg, n_squares=3)
+	elif cfg.init_type == "checkerboard_4":
+		atm.init_mass_checkerboard(cfg, n_squares=4)
+	elif cfg.init_type == "stripes" or cfg.init_type == "stripes_10":
+		atm.init_mass_stripes(cfg, n_stripes=10)
+	elif cfg.init_type == "stripes_3":
+		atm.init_mass_stripes(cfg, n_stripes=3)
+	elif cfg.init_type == "stripes_4":
+		atm.init_mass_stripes(cfg, n_stripes=4)
+	elif cfg.init_type == "random":
+		atm.init_mass_random(cfg)
+	else:
+		print(f"[WARNING] Unknown init_type: {cfg.init_type}. Using gradient.")
+		atm.init_mass_gradient(cfg)
+	
+	print("[INFO] Starting time loop.")
+	for t_idx, t in tqdm(enumerate(np.arange(0, cfg.tmax + cfg.dt, cfg.dt))):
 
-    atm = mini.Atm()
-    atm.init(cfg)
-    dists = None
-    rates = None
+		# Plotting...
+		if t % cfg.dt_plot == 0:
+			os.makedirs(f"{cfg.dir_plot}/{s_idx}", exist_ok=True)
+			atm.plot(s_idx=s_idx, z=atm.m,
+			cmap=cm.oslo, levels=500, vmin=0, vmax=cfg.m0, lx=cfg.lx/1000.0,
+			save_path=f"{cfg.dir_plot}/{s_idx}/mass_{t_idx:03d}.png", dpi=300)
 
-    atm.init_mass_gradient(cfg)
+		# Advection...
+		if (cfg.flow_type == "jet"):
+			vel = mini.jet(atm.x, lx=cfg.lx, U0=cfg.u0, t=t)
+		elif (cfg.flow_type == "gyre"):
+			vel = mini.gyre(atm.x, lx=cfg.lx, u0=cfg.u0)
+		else:
+			print(f"[WARNING] Flow type not available! Use 'jet' or 'gyre'.")
+		atm.x += vel * cfg.dt
 
-    gyre_ = partial(mini.gyre, lx=cfg.lx, u0=cfg.u0)
-    kernel_ = partial(mini.kernel, 
-    		beta=cfg.beta, 
-    		dim=cfg.dim, 
-    		d=cfg.dmix, 
-    		dt=cfg.dt)
+		# First-order dispersion (random walk)...
+		atm.x += mini.dispersion(atm.x, cfg.ddiff0, cfg.dt)
 
-    print("[INFO] Starting time loop.")
-    for t_idx, t in tqdm(enumerate(np.arange(0, cfg.tmax + cfg.dt, cfg.dt))):
+		# Enforce domain boundaries...
+		atm.check_boundaries(cfg, method=cfg.boundary_method)
 
-        # Plotting...
-        if t % cfg.dt_plot == 0:
-            atm.plot(s_idx=s_idx, z=atm.m, cmap=cm.glasgow, 
-              levels=500, vmin=0, vmax=1,
-              save_path=f"{cfg.dir_plot}/{s_idx}/mass_{t_idx:03d}.png", dpi=300)
+		# Buffer to check the mass later...
+		m_buffer = atm.m.copy()
 
-        # Advection...
-        vel = mini.jet(atm.x, lx=cfg.lx, U0=cfg.u0, t=t)
-        atm.x += vel * cfg.dt
+		# Mixing...
+		if (cfg.dmix > 0) and (t % cfg.dt_mix == 0):
+			if cfg.mixing_type == 'emulation':
+				atm.m = deep.mix(atm.x, atm.m, r=3*cfg.lmix, m0=cfg.m0)
+			elif cfg.mixing_type == 'steering':
+				atm.m, dists, rates = mini.mix_steering(atm.x, atm.m, 
+				cfg.beta, cfg.dmix, cfg.dt_mix,
+				cfg.dim, r_cutoff=2*cfg.lmix,
+				dists_tm1=dists, lbd_c=cfg.lbd_c, w=cfg.w)
+			else: 
+				atm.m = mini.mix(atm.x, atm.m, cfg.beta, cfg.dmix, 
+				    cfg.dt, cfg.dim, r_cutoff=2*cfg.lmix)
+			
+		# Check mass balance...
+		mass_balance = np.abs(np.sum(m_buffer - atm.m))
+		if mass_balance > cfg.prec_warn:
+			print(f"[WARNING] Mass not conserved: residual = {mass_balance:.2e}")
 
-        # First-order dispersion (random walk)...
-        atm.x += mini.dispersion(atm.x, cfg.ddiff0, cfg.dt)
-
-        # Enforce domain boundaries...
-        atm.check_boundaries(cfg, method=cfg.boundary_method)
-
-        m_buffer = atm.m.copy()
-
-        # Mixing...
-        if (cfg.dmix > 0) and (t % cfg.dt_mix == 0):
-            if cfg.mixing_type == 'emulation':
-                atm.m = deep.mix(atm.x, atm.m, r=cfg.lmix, m0=cfg.m0)
-            elif cfg.mixing_type == 'steering':
-                atm.m, dists, rates = mini.mix_steering(atm.x, atm.m, 
-                cfg.beta, cfg.dmix, cfg.dt_mix,
-                cfg.dim, r_cutoff=3 * cfg.lmix, 
-                dists_tm1=dists, lbd_c=cfg.lbd_c, w=cfg.w)
-            else: 
-                atm.m = mini.mix(atm.x, atm.m, cfg.beta, cfg.dmix, 
-                cfg.dt, cfg.dim, r_cutoff=3 * cfg.lmix)
-
-        mass_balance = np.abs(np.sum(m_buffer - atm.m))
-        if mass_balance > cfg.prec_warn:
-            print(f"[WARNING] Mass not conserved: residual = {mass_balance:.2e}")
-
-        os.makedirs(f"{cfg.dir_out}/{s_idx}/", exist_ok=True)
-        np.savez(f"{cfg.dir_out}/{s_idx}/data_{t_idx:03d}.npz",
-                 x=atm.x, m=m_buffer, m_=atm.m)
+		# Save data...
+		os.makedirs(f"{cfg.dir_out}/{s_idx}/", exist_ok=True)
+		np.savez(f"{cfg.dir_out}/{s_idx}/data_{t_idx:03d}.npz",
+		         x=atm.x, m=m_buffer, m_=atm.m)
