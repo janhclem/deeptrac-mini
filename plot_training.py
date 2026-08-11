@@ -4,20 +4,25 @@ Plot training loss from the training log file.
 This script reads the training log CSV file and plots the loss over
 training iterations on a logarithmic scale.
 
-Copyright (C) 2026 Jan Clemens
+Copyright (c) 2026 Forschungszentrum Juelich GmbH
 
-This program is free software: you can redistribute it and/or modify
-it under the terms of the GNU General Public License as published by
-the Free Software Foundation, either version 3 of the License, or
-(at your option) any later version.
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to
+deal in the Software without restriction, including without limitation the
+rights to use, copy, modify, merge, publish, distribute, sublicense, and/or
+sell copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
 
-This program is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-GNU General Public License for more details.
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
 
-You should have received a copy of the GNU General Public License
-along with this program.  If not, see <https://www.gnu.org/licenses/>.
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
+IN THE SOFTWARE.
 
 Usage
 -----
@@ -79,7 +84,7 @@ plt.figure(figsize=(5,4))
 plt.scatter(range(num_iter), np.abs(training_stats[-2]), c="b", s=0.1, alpha=0.5)
 plt.plot(range(num_iter), moving_average(np.abs(training_stats[-2]), 1000), c="c", lw=3, label="MA(1000)")
 plt.plot(range(num_iter), moving_median(np.abs(training_stats[-2]), 1000), c="orange", lw=2, label="Median(1000)")
-plt.yscale("log")
+#plt.yscale("log")
 plt.xlabel("Iteration")
 plt.ylabel("Abs. Mass balance per particle")
 plt.title("Mass balance")
