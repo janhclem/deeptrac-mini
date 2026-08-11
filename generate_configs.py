@@ -5,7 +5,7 @@ Generate 1000 training ensemble config files based on gyre0.ini.
 Structure:
 - 10 mass initialization types
 - 2 ddiff0 values (0.0, 10.0)
-- 50 u0 values (0, 1, 2, ..., 49)
+- 50 u0 values between 0 and 25
 - Total: 10 * 2 * 50 = 1000 configs
 
 Config naming: {init_type}_{ddiff0_val}_{u0_val}.ini

@@ -1,4 +1,4 @@
-# Lagrangian Transport Modeling: Prototyping New Mixing Methods and Deep Emulators
+# Prototyping New Mixing Methods and Deep Emulators for Lagrangian Transport Modeling
 
 ![License](https://img.shields.io/badge/license-MIT-blue.svg)
 ![Status](https://img.shields.io/badge/status-pilot%20study-orange.svg)
