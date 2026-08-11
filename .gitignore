@@ -15,7 +15,9 @@ deepmix.weights
 plot_emulation/
 out_emulation/
 *.mp4
-*.png
 configs/*
 plots/*
 weights/*
+*.png
+!doc/figures/*.png
+!doc/preprint/figures/*.png

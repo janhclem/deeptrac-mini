@@ -126,15 +126,26 @@ Training proceeds in two phases: an initial pilot run, followed by a fine-tuning
 
 ### 4.3 Results: Convergence & Validation
 
-DeepMix converges to a final **median RMSE of about 0.22**, corresponding to an estimated **Pearson correlation coefficient $R \approx 0.95$** between predicted and reference mass changes; 95% of samples reach $R > 0.90$. Convergence is steady for the majority of samples throughout training, although a minority of cases show markedly lower correlation. Preliminary analysis suggests these outliers coincide with particular edge cases in the training data (e.g. very sparse local neighbourhoods), though this remains a hypothesis that warrants further investigation. Training is also visibly disrupted by intermittent batches of unusually hard samples, seen as transient loss spikes.
+DeepMix converges to a final **median RMSE of about 0.22**, corresponding to an estimated **Pearson correlation coefficient $R \approx 0.95$** between predicted and reference mass changes; 95% of samples reach $R > 0.90$.
 
-| Metric | Figure |
-|---|---|
-| RMSE vs. training iteration | ![Training loss](https://github.com/janhclem/deeptrac-mini/blob/master/doc/preprint/figures/training_loss.png) |
-| Pearson correlation ($R$) vs. training iteration | ![Training R](https://github.com/janhclem/deeptrac-mini/blob/master/doc/preprint/figures/training_r.png) |
-| Mean absolute mass balance per particle | ![Mass balance](https://github.com/janhclem/deeptrac-mini/blob/master/doc/preprint/figures/mass_balance.png) |
+<p align="center">
+  <img src="https://github.com/janhclem/deeptrac-mini/blob/master/doc/preprint/figures/training_loss.png" alt="RMSE training progress" width="80%">
+</p>
+<p align="center"><em>Figure — Training progress quantified by the estimated RMSE (per-batch samples in red; running mean/median over 100 batches in magenta/green).</em></p>
+
+Convergence is steady for the majority of samples throughout training, although a minority of cases show markedly lower correlation. Preliminary analysis suggests these outliers coincide with particular edge cases in the training data (e.g. very sparse local neighbourhoods), though this remains a hypothesis that warrants further investigation. Training is also visibly disrupted by intermittent batches of unusually hard samples, seen as transient spikes in both the RMSE plot above and the correlation plot below.
+
+<p align="center">
+  <img src="https://github.com/janhclem/deeptrac-mini/blob/master/doc/preprint/figures/training_r.png" alt="Pearson correlation training progress" width="80%">
+</p>
+<p align="center"><em>Figure — Training progress quantified by the estimated Pearson correlation coefficient (R) between predicted and reference mass changes.</em></p>
 
 Notably, **even without an explicit mass-conservation constraint**, DeepMix steadily improves mass conservation over the course of training, reaching a final conservation error on the order of **0.1% per particle**. This suggests DeepMix is not simply overfitting the training data, but is learning a physically meaningful representation of the underlying mixing operator — though the residual error remains many orders of magnitude larger than machine precision, so mass conservation is *not* exact. The fine-tuning phase (§4.2), which adds an explicit mass-conservation penalty, is intended to close this gap further.
+
+<p align="center">
+  <img src="https://github.com/janhclem/deeptrac-mini/blob/master/doc/preprint/figures/mass_balance.png" alt="Mass balance training progress" width="80%">
+</p>
+<p align="center"><em>Figure — Mean absolute mass balance per particle over the course of training.</em></p>
 
 ### 4.4 Application
 
