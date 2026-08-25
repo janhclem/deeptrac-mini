@@ -61,57 +61,132 @@ def moving_median(x, window):
     
     return result
 
-logfile = "./log/training.log"
+logfile = "./log/training.log.pilot.2"
+#logfile_ref = "./log/training.log.pilot.2"
 training_stats = np.genfromtxt(logfile, delimiter=",", skip_header=1, dtype=float).T
 
+eras = 6
 num_iter = len(training_stats[1])
+iter_per_era = num_iter/eras
 
-# Plot 1: RMSE with both moving average and moving median
+# Plot 1: NRMSE with both moving average and moving median
 plt.figure(figsize=(5,4))
-plt.scatter(range(num_iter), training_stats[-1], c="r", s=0.1, alpha=0.5)
-plt.plot(range(num_iter-200), moving_average(training_stats[-1], 100)[100:-100], c="m", lw=3, label="Mean(100)")
-plt.plot(range(num_iter-200), moving_median(training_stats[-1], 100)[100:-100], c="g", lw=2, label="Median(100)")
+plt.scatter(np.arange(num_iter), training_stats[-1], c="r", s=0.1, alpha=0.5, label="Batch: NRMSE")
+#plt.plot(np.arange(num_iter-200), moving_average(training_stats[-1], 100)[100:-100], c="m", lw=3, label="Running Mean")
+plt.plot(np.arange(num_iter-200), moving_median(training_stats[-1], 100)[100:-100], c="g", lw=2, label="Running Median")
+for e in range(eras+1):
+	plt.axvline(x=e*iter_per_era, c="k")
+plt.xlim(0, num_iter)
 plt.yscale("log")
-plt.xlabel("Iteration")
-plt.ylabel("Loss")
-plt.title("RMSE")
+plt.xlabel("Batch")
+plt.ylabel("Loss (NRMSE)")
 plt.legend(loc='best')
 plt.grid(True, which="both", linestyle="--", alpha=0.5)
 plt.savefig("./training_loss.png", dpi=300)
 
 # Plot 2: Mass balance with both moving average and moving median
 plt.figure(figsize=(5,4))
-plt.scatter(range(num_iter), np.abs(training_stats[-2]), c="b", s=0.1, alpha=0.5)
-plt.plot(range(num_iter), moving_average(np.abs(training_stats[-2]), 1000), c="c", lw=3, label="MA(1000)")
-plt.plot(range(num_iter), moving_median(np.abs(training_stats[-2]), 1000), c="orange", lw=2, label="Median(1000)")
-#plt.yscale("log")
-plt.xlabel("Iteration")
-plt.ylabel("Abs. Mass balance per particle")
+plt.scatter(range(num_iter), np.abs(training_stats[-2]), c="b", s=0.1, alpha=0.5, label="Batch: Mass balance")
+#plt.plot(range(num_iter), moving_average(np.abs(training_stats[-2]), 1000), c="c", lw=3, label="Running Mean")
+plt.plot(range(num_iter), moving_median(np.abs(training_stats[-2]), 1000), c="orange", lw=2, label="Running Median")
+plt.yscale("log")
+for e in range(eras+1):
+	plt.axvline(x=e*iter_per_era, c="k")
+plt.xlabel("Batch")
+plt.xlim(0, num_iter)
+plt.ylabel("Abs. global mass balance normalized per particle")
 plt.title("Mass balance")
 plt.legend(loc='best')
 plt.grid(True, which="both", linestyle="--", alpha=0.5)
 plt.savefig("./mass_balance.png", dpi=300)
 
+
+
 # Plot 3: R with both moving average and moving median
 plt.figure(figsize=(5,4))
-plt.scatter(range(num_iter), 1-training_stats[-1]**2, c="r", s=0.1, alpha=0.5)
-plt.plot(range(num_iter-200), moving_average(1-training_stats[-1]**2, 100)[100:-100], c="m", lw=3, label="Mean(100)")
-plt.plot(range(num_iter-200), moving_median(1-training_stats[-1]**2, 100)[100:-100], c="g", lw=2, label="Median(100)")
+plt.scatter(range(num_iter), 1-training_stats[-1]**2, c="r", s=0.1, alpha=0.5, label="Estimated R")
+#plt.plot(range(num_iter-200), moving_average(1-training_stats[-1]**2, 100)[100:-100], c="m", lw=3, label="Running Mean")
+plt.plot(range(num_iter-200), moving_median(1-training_stats[-1]**2, 100)[100:-100], c="g", lw=1, label="Running Median")
+for e in range(eras+1):
+	plt.axvline(x=e*iter_per_era, c="k")
 #plt.yscale("log")
-plt.xlabel("Iteration")
-plt.ylabel("Loss")
+plt.xlabel("Batch")
+plt.ylabel("R-value")
 plt.ylim(0,1)
-plt.title("Pearson Correlation Coefficient Estimation")
+plt.xlim(0, num_iter)
+plt.title("Estimated R-value, correlation coefficient")
 plt.legend(loc='best')
 plt.grid(True, which="both", linestyle="--", alpha=0.5)
 plt.savefig("./training_r.png", dpi=300)
 
 
+logfile_m0 = "./log/training.log.pilot.m.0"
+logfile_m1 = "./log/training.log.pilot.m.0.001"
+logfile_m2 = "./log/training.log.pilot.m.0.0001"
 
+training_stats_m0 = np.genfromtxt(logfile_m0, delimiter=",", skip_header=1, dtype=float).T
+training_stats_m1 = np.genfromtxt(logfile_m1, delimiter=",", skip_header=1, dtype=float).T
+training_stats_m2 = np.genfromtxt(logfile_m2, delimiter=",", skip_header=1, dtype=float).T
 
+num_iter_m0 = len(training_stats_m0[1])
+num_iter_m1 = len(training_stats_m1[1])
+num_iter_m2 = len(training_stats_m2[1])
 
+window = 100
 
+# Plot 4: NRMSE with moving median for m0, m1, m2
+plt.figure(figsize=(5,4))
+plt.plot(range(num_iter_m0 - 2*window), moving_median(training_stats_m0[-1], window)[window:-window],
+         c="r", lw=2, label=r"$\lambda_m$ = 0")
+plt.plot(range(num_iter_m1 - 2*window), moving_median(training_stats_m1[-1], window)[window:-window],
+         c="g", lw=2, label=r"$\lambda_m$ = 0.0001")
+plt.plot(range(num_iter_m2 - 2*window), moving_median(training_stats_m2[-1], window)[window:-window],
+         c="b", lw=2, label=r"$\lambda_m$ = 0.00001")
+plt.xlim(0,iter_per_era)
+plt.yscale("log")
+plt.xlabel("Batch")
+plt.ylabel("Loss")
+plt.title("Median Loss (NRMSE + mass penalty)")
+plt.legend(loc='best')
+plt.grid(True, which="both", linestyle="--", alpha=0.5)
+plt.tight_layout()
+plt.savefig("./training_loss_ref.png", dpi=300)
 
+# Plot 5: Mass divergence with moving median for m0, m1, m2
+plt.figure(figsize=(5,4))
+plt.plot(range(num_iter_m0 - 2*window), moving_median(np.abs(training_stats_m0[-2]), window)[window:-window],
+         c="r", lw=2, label=r"$\lambda_m$ = 0")
+plt.plot(range(num_iter_m1 - 2*window), moving_median(np.abs(training_stats_m1[-2]), window)[window:-window],
+         c="g", lw=2, label=r"$\lambda_m$ = 0.001")
+plt.plot(range(num_iter_m2 - 2*window), moving_median(np.abs(training_stats_m2[-2]), window)[window:-window],
+         c="b", lw=2, label=r"$\lambda_m$ = 0.0001")
+plt.xlim(0, iter_per_era)
+plt.xlabel("Batch")
+plt.ylabel("Mass divergence")
+plt.title(r"Mass divergence")
+plt.legend(loc='best')
+plt.grid(True, which="both", linestyle="--", alpha=0.5)
+plt.savefig("./training_mass_ref.png", dpi=300)
 
+def estimate_R(nrmse_smoothed):
+    r2 = 1.0 - nrmse_smoothed**2
+    r2 = np.clip(r2, 0, 1)  # guards against NRMSE > 1
+    return np.sqrt(r2)
+
+nrmse_m0 = moving_median(training_stats_m0[-1], window)[window:-window]
+nrmse_m1 = moving_median(training_stats_m1[-1], window)[window:-window]
+nrmse_m2 = moving_median(training_stats_m2[-1], window)[window:-window]
+
+plt.figure(figsize=(5,4))
+plt.plot(range(num_iter_m0 - 2*window), estimate_R(nrmse_m0), c="r", lw=2, label=r"$\lambda_m$ = 0")
+plt.plot(range(num_iter_m1 - 2*window), estimate_R(nrmse_m1), c="g", lw=2, label=r"$\lambda_m$ = 0.001")
+plt.plot(range(num_iter_m2 - 2*window), estimate_R(nrmse_m2), c="b", lw=2, label=r"$\lambda_m$ = 0.0001")
+plt.xlim(0, iter_per_era)
+plt.xlabel("Batch")
+plt.ylabel(r"Estimated $R$")
+plt.title(r"Estimated correlation coefficient")
+plt.legend(loc='best')
+plt.grid(True, which="both", linestyle="--", alpha=0.5)
+plt.savefig("./training_R_ref.png", dpi=300)
 
 

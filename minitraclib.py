@@ -379,8 +379,10 @@ class Atm():
         self.x = None  # positions (np, dim)
         self.m = None  # masses    (np,)
 
-    def init(self, config):
+    def init(self, config, seed=None):
         """Initialize particles on a uniform random distribution with constant mass."""
+        if seed is not None:
+                np.random.seed(seed)
         if config.flow_type == "jet":
         	print("[INFO]: For the jet flow initialisation is constraint in y direction.")
         	self.x = np.random.uniform([0,config.lx/4.0], [config.lx, config.lx*3/4], size=(config.np, config.dim))

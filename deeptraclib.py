@@ -114,27 +114,36 @@ class DeepMix(torch.nn.Module):
         src, dest = data.edge_index
         edge_attr = data.edge_attr
 
-        # Encode edge features into latent space
+        # Encode edge features into latent space...
         e = self.encoder(edge_attr)
-
-        # Initial node embedding: aggregate encoded edge features
+        
+        # Initial node embedding: aggregate encoded edge features...
         h = scatter_sum(e, dest, dim=0, dim_size=x.shape[0])
+        print(h.shape)
+        print(h)
 
         # Message passing (single iteration)
         h_src = h[src]
+        print(src)
+        print(h_src)
+        print(h_src.shape)
+        print(src.shape)
         msg = self.edge_func(self.edge_linear(e) + self.node_linear_1(h_src))
-        msg_agg = scatter_sum(msg, dest, dim=0, dim_size=x.shape[0])
+        #msg_agg = scatter_sum(msg, dest, dim=0, dim_size=x.shape[0])
+        
         e = msg
-        h = self.node_func(self.node_linear_2(h) + self.msg_linear(msg_agg))
+        #h = self.node_func(self.node_linear_2(h) + self.msg_linear(msg_agg))
 
         # Decode to per-edge mass exchange, aggregate to per-node dm
         u = self.decoder(e)
+        print(u.shape)
         u_agg = scatter_sum(u, dest, dim=0, dim_size=x.size(0)).squeeze()
+        print(u_agg.shape)
 
         return u, u_agg
 
 
-def mix(x, m, r, m0=1.0, weights_file="./deepmix.weights.0"):
+def mix(x, m, r, m0=1.0, weights_file="./weights/deepmix.weights.0"):
     """
     Perform mixing using the deep learning emulator.
 

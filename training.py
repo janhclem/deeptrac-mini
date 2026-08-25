@@ -69,12 +69,12 @@ USE_RESTART     = False
 LAMBDA          = 0.00  # mass-conservation penalty weight
 
 ## Tuning...
-LR              = 0.000003  
-LR_FINAL        = 0.0000003
-BATCH_SIZE      = 8
-NUM_ITERATIONS  = 100_000
-USE_RESTART     = True
-LAMBDA          = 0.001  # mass-conservation penalty weight
+#LR              = 0.000003  
+#LR_FINAL        = 0.0000003
+#BATCH_SIZE      = 8
+#NUM_ITERATIONS  = 100_000
+#USE_RESTART     = False
+#LAMBDA          = 0.0  # mass-conservation penalty weight
 
 LOG_FILE        = "./log/training.log"
 FILES_DATA      = "./data/out_gyre/*/*"
@@ -200,5 +200,5 @@ for epoch in range(epochs):
             writer = csv.writer(log_file)
             writer.writerow([datetime.now().isoformat(), f"{epoch:04d}", f"{ind:06d}", f"{avg_loss:.6f}", f"{avg_mass_budget:.4f}" , f"{nrmse:.4f}"])
 
-torch.save(deepmix.state_dict(), WEIGHTS_FILE)
+#torch.save(deepmix.state_dict(), WEIGHTS_FILE)
 print(f"[INFO] Training complete. Best NRMSE: {np.sqrt(min_loss):.4f}")

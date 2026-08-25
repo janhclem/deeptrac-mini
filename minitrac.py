@@ -45,12 +45,15 @@ from tqdm import tqdm
 import numpy as np
 import os
 from cmcrameri import cm
+import time
 
 # Parse command line arguments...
 command = mini.Command()
 args = command.args
-restart_s_idx = 992
-stop_s_idx = 992
+restart_s_idx = None
+stop_s_idx = None
+
+
 
 # Check if we should loop over a folder of configs
 if args.config_folder:
@@ -66,6 +69,9 @@ else:
 
 for s_idx, config_file in enumerate(config_files):
 
+	# Create timer...
+	timer_mix = 0
+
 	# Handle both folder mode and single file mode
 	if args.config_folder:
 		config_name = os.path.basename(config_file)[:-4]
@@ -75,16 +81,19 @@ for s_idx, config_file in enumerate(config_files):
 		print(f"[INFO] Loading configuration {s_idx}: {args.config}")
 		cfg = mini.Config.read_ini(args.config)
 	
-	if s_idx < restart_s_idx:
-		continue
-	if s_idx > stop_s_idx:
-		break
+	
+	if restart_s_idx is not None:
+		if s_idx < restart_s_idx:
+			continue
+	if stop_s_idx is not None:
+		if s_idx > stop_s_idx:
+			break
 		
 	cfg.show()
 	
 	# Initialize atmosphere...
 	atm = mini.Atm()
-	atm.init(cfg)
+	atm.init(cfg, seed=42)
 	dists = None
 	rates = None
 	
@@ -146,9 +155,10 @@ for s_idx, config_file in enumerate(config_files):
 		m_buffer = atm.m.copy()
 
 		# Mixing...
+		start = time.perf_counter()
 		if (cfg.dmix > 0) and (t % cfg.dt_mix == 0):
 			if cfg.mixing_type == 'emulation':
-				atm.m = deep.mix(atm.x, atm.m, r=3*cfg.lmix, m0=cfg.m0)
+				atm.m = deep.mix(atm.x, atm.m, r=2*cfg.lmix, m0=cfg.m0)
 			elif cfg.mixing_type == 'steering':
 				atm.m, dists, rates = mini.mix_steering(atm.x, atm.m, 
 				cfg.beta, cfg.dmix, cfg.dt_mix,
@@ -157,6 +167,7 @@ for s_idx, config_file in enumerate(config_files):
 			else: 
 				atm.m = mini.mix(atm.x, atm.m, cfg.beta, cfg.dmix, 
 				    cfg.dt, cfg.dim, r_cutoff=2*cfg.lmix)
+		timer_mix += time.perf_counter() - start
 			
 		# Check mass balance...
 		mass_balance = np.abs(np.sum(m_buffer - atm.m))
@@ -167,3 +178,5 @@ for s_idx, config_file in enumerate(config_files):
 		os.makedirs(f"{cfg.dir_out}/{s_idx}/", exist_ok=True)
 		np.savez(f"{cfg.dir_out}/{s_idx}/data_{t_idx:03d}.npz",
 		         x=atm.x, m=m_buffer, m_=atm.m)
+		         
+	print(f"[INFO] Timer per iteration for mixing: {timer_mix/cfg.tmax*cfg.dt}")

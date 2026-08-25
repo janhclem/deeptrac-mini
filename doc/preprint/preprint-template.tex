@@ -9,10 +9,10 @@
 
 \usepackage{preprint}
 
-%% Math packages
+%% Math packages...
 \usepackage{amsmath, amsthm, amssymb, amsfonts}
 
-%% Bibliography options
+%% Bibliography options...
 \usepackage[numbers,square]{natbib}
 \bibliographystyle{unsrtnat}
 %\usepackage{natbib}
@@ -152,11 +152,21 @@ Machine learning algorithms show promise in accelerating such schemes through em
 
 \subsection{Lagrangian transport modeling}
 
-*** General summary of lagrangian transport modeling ***
+In Lagrangian transport modeling, tracer fields are not represented on static grid points, but rather by grid points that move along the flow. In contrast to Eulerian models, Lagrangian transport models do not show numerical diffusion, which makes them useful in resolving chaotic mixing, which includes steering, mixing, transport barriers and steep gradients. Lagrangian transport models therefore have been used in special cases to represent flow which requires well defined transport barriers (CLaMS, ...).  Even though, or in particular because, Lagrangian transport models do not show numerical diffusion, diffusion must, and can be, parameterised precicely. This parameterisation is done with mixing schemes, that interchanges masses or mixing-ratios between particles. 
 
-\subsection{Mass-transfer particle tracking}
+The advection in a Lagrangian transport model is calculated by solving the equation:
 
-Explanation of the Mass-transfer particle tracking algorithm ***.
+\begin{align}
+\frac{d\vec{x}(x,t)}{dt}=\vec{v}(x,t)
+\end{align}
+
+Such an ODE can be solved with different schemes. In our simple case we make use of the Euler scheme.
+
+A simple way of dispersion in the Lagrangian dispersion modeling is by a langevin equation:
+
+*** dispersion equation ***
+
+The mixing between particle can be described my multiple different schemes. Here we use the MTPT. The Mass-transfer particle tracking scheme (MTPT) is described in most detail in the existing literature (\citep{Benson2008,Benson2016,Benson2019, Benson2024}). The general idea is to determine the mixing between two particles, by the overlap of two gaussians that represent their dispersion over the itnegration timestep and by taking into account the mass differences between the two particles.
 
 \subsection{Double gyre}
 
@@ -177,7 +187,9 @@ increase in mixing and reactive surface area. Furthermore, the doubly-gyre flow 
 \SI{100}{\kilo\meter}, and $u_0$ is varied between $0$ and
 \SI{25}{\meter\per\second}. 
 
-\subsubsection{Architecture}
+Since we can directly evaluate the double gyre field we do not reqire any interpolation function in \textsc{minitrac}.
+
+\subsubsection{Architecture of DeepMix}
 
 The general structure of DeepMix follows the encoder-processor-decoder scheme, where the encoder creates a latent space from the pair-wise features of the particles, the processor learns the time change of the properties in the latent space, and the decoder collapses the results into an actual prediction of the mass difference (see Fig. \ref{fig:overview}). The design was adapted from \citet{Li2022}, with little changes necessary to generalize to our domain.
 
@@ -209,9 +221,9 @@ Before we explain the processor, let's have a look at the decoder, since it is t
     \label{fig:encodedecoder}
 \end{figure}
 
-The processor is the most interesting part of DeepMix. Initially it takes the encoded edge features from nearby particles, and embeds them onto the nodes, by a simple scatter sum. Subsequently, the initial edge features and initial node embedding are combined into one quantity, by addition of two linear models, with those two edge features as input. The combined quantity is fed into the edge function, which is a two layer MLP that learns to predict meaningful messages between the different particles. In other words, it learns to predict part of the effective interaction between the particles, functioning a bit like a minimal autoencoder (64, 32, 64). Afterwards, the messages from all particles nearby are aggregated by another scatter sum at every particle. Messages are now created.
+The processor is the most interesting part of DeepMix. Initially it takes the encoded edge features from nearby particles, and embeds them onto the nodes, by a simple scatter sum. Subsequently, the initial edge features and initial node embedding are combined into one quantity, by addition of two linear models, with those two edge features as input. The combined quantity is fed into the edge function, which is a two layer MLP that learns to predict meaningful messages between the different particles. In other words, it learns to predict part of the effective interaction between the particles, functioning a like a minimal bottleneck (64, 32, 64). Afterwards, the messages from all particles nearby are aggregated by another scatter sum at every particle. Messages are now created.
 
-The messages are then passed to the edge features and the node features. The edge features are trivially embedded, since the not-aggregated message at every edge simply becomes the edge feature. The embedding on the nodes, in contrast, is done by another mini autoencoder that combines the prior embedding with the aggregated messages. However, this node embedding is not used any further. The process could be repeated given the newly generated node and edge embedding. However, practically, one iteration proved sufficient, in agreement with \citet{Li2022}.
+The messages are then passed to the edge features and the node features. The edge features are trivially embedded, since the not-aggregated message at every edge simply becomes the edge feature. The embedding on the nodes, in contrast, is done by another mini bottleneck that combines the prior embedding with the aggregated messages. However, this node embedding is not used any further. The process could be repeated given the newly generated node and edge embedding. However, practically, one iteration proved sufficient, in agreement with \citet{Li2022}.
 
 The decoder now decodes the edge embedding before the final scatter sum aggregation calculates the actual differences from the local neighbours. Intuitively, this quantifies the aggregated impact of the interactions on the composition of the particle.
 
@@ -267,16 +279,34 @@ which one is the emulation and which one is the baseline. The reader is
 invited to compare the two movies and try to identify the emulated version,
 as an initial, admittedly very limited, version of a Turing test. (This idea is inspired by \citet{Palmer2016}, who suggested that climate models can be
 considered adequate if their output cannot be visually distinguished from
-observational data). The results are very promising, showing only minor deviations in the overall mixing behavior in the double gyre. In general, however, the MTPT scheme appears slightly smoother. This comparison suggests that differences between the emulation and the baseline scheme are found only in the details, or would become more apparent over longer integration periods. We therefore take a closer look at the convergence during training and at the remaining deviations in the following.
+observational data). However, for immediate inter-comparison Fig. \ref{fig:simu} and \ref{fig:emu} show gyre simulation results after 100\,s.
+
+The results are very promising, showing only minor deviations in the overall mixing behavior in the double gyre. In general, however, the MTPT scheme appears slightly smoother and more diffusive. This comparison suggests that differences between the emulation and the baseline scheme are found only in the details, or would become more apparent over longer integration periods. We therefore take a closer look at the convergence during training and at the remaining deviations in the following.
+
+\begin{figure}[T]
+    \centering
+    \includegraphics[width=0.9\linewidth]{figures/simu/mass_050.png}
+    \caption{Simulation results with the MTPT scheme.}
+    \label{fig:simu}
+\end{figure}
+
+\begin{figure}[T]
+    \centering
+    \includegraphics[width=0.9\linewidth]{figures/emu/mass_050.png}
+    \caption{Simulation results with the DeepMix emulator.}
+    \label{fig:emu}
+\end{figure}
+
+
 
 \subsubsection{Training convergence}
 
-During training DeepMix convergence with a final median RMSE of about 0.22 (See Fig. \ref{fig:training_progress} and \ref{fig:training_r}). This gives an estimated R value of about 0.95. Moreover 95\% of the samples have a R value over 0.90. The learning process is mostly steady throughout the entire five epochs. Even if the overall training progress converges for the largest part of samples, some notable outliers appeared. A minority of cases cluster around 0.6 and 1.3. A closer look revealed that they are related to edge cases (Still need to be check, its only hypothesis). Furthermore, the training is distruped by more difficult batches (e.g. between iterations 20000 and 300000). 
+During training DeepMix convergence with a final median NRMSE of about 0.20 (See Fig. \ref{fig:training_progress} and \ref{fig:training_r}). This gives an estimated R value of about 0.98. Moreover at least 95\% of the samples have a R value over 0.90. The learning process is mostly steady throughout the entire five epochs. Even if the overall training progress converges for the largest part of samples, some notable outliers appeared. A minority of cases cluster around 0.6 and 1.3. A closer look revealed that they are related to edge cases (Still need to be check, its only hypothesis). Furthermore, the training is distruped by more difficult batches (e.g. between iterations 20000 and 300000). 
 
 \begin{figure}
     \centering
     \includegraphics[width=0.9\linewidth]{figures/training_loss.png}
-    \caption{Training progress quantified by estimated RMSE.}
+    \caption{Training progress quantified by estimated NRMSE.}
     \label{fig:training_progress}
 \end{figure}
 
@@ -287,9 +317,7 @@ During training DeepMix convergence with a final median RMSE of about 0.22 (See 
     \label{fig:training_r}
 \end{figure}
 
-Even without explicit constraint on the mass conservation, DeepMix improves the mass conservation steadily throughout the learning process leading to a final conservation error on the order of 0.1\% per particle. This corrobarates the hypothesis that DeepMix not only fits the training data arbirtary, but in a pysical meaningfull way. However, the conservation error is still dozents of orders larger than the numerical precision.  
-
-*** TODO: Add fine tuning with mass conservation 
+Even without explicit constraint on the mass conservation, DeepMix improves the mass conservation steadily throughout the learning process leading to a final conservation error on the order of 0.1\% per particle. This corroborates the hypothesis that DeepMix not only fits the training data arbitrary, but in a physical meaningfully way. However, the conservation error is still dozens of orders larger than the numerical precision.  
 
 \begin{figure}
     \centering
@@ -297,6 +325,28 @@ Even without explicit constraint on the mass conservation, DeepMix improves the 
     \caption{Training progress quantified by mean mass balance per particle.}
     \label{fig:training_balance}
 \end{figure}
+
+As a potential solution of the mass conservation issue, we test adding a mass penalty function. We penalize the mass deviation over the entire graph, and not of individual particles, which brings its own limitations, however, can be performed as a quick follow up tuning procedure. The tuning procedure starts with the learning rate $0.000003 $ and moved towards $0.0000003$ for one further training era. Three independent tuning runs were performed. One without mass penalty ($\lambda_m=0$), one with a strong penalty ($\lambda_m=0.0001$), one with a moderate penalty ($\lambda_m=0.00001$). 
+
+As shown in Fig. \ref{fig:tuning_loss}, the loss is substantially reduced for the moderate penalty, reaching a medium loss (NRMSE plus penalty) of below 0.15, and an estimated R of above 0.99 (see also Fig. \ref{fig:tuning_r} in the Appendix). This is a significant improvement that also exceeds improvements that only come from further training. However the run with a strong mass deviation penalty, is in disadvantage of the total loss, even though we can't conclude that the NRMSE would be larger in itself, from the loss.
+
+\begin{figure}
+    \centering
+    \includegraphics[width=0.9\linewidth]{figures/training_loss_ref.png}
+    \caption{Tuning with additional mass penalty, lower learning rates for one more era.}
+    \label{fig:tuning_loss}
+\end{figure}
+
+Surprisingly, adding the mass penalty, does not help reducing the bias in the mass balance. Figure  \ref{fig:tuning_mass}, unequivocal shows that the further reduction of the absolute mass deviation is independent from the penalties we applied. We have not found an explanation for this result, yet. Nevertheless, the tuning process has turned down the absolute mass deviation towards 0.05\% per particle, from 0.1\%.
+ 
+\begin{figure}
+    \centering
+    \includegraphics[width=0.9\linewidth]{figures/training_mass_ref.png}
+    \caption{Tuning with additional mass penalty, lower learning rates for one more era.}
+    \label{fig:tuning_mass}
+\end{figure}
+
+
 
 
 \subsubection{Discussion \& Conclusion}
@@ -326,7 +376,7 @@ simulation data, but also with observational data.
 \footnotesize
 \section*{Data and Model Availability}
 
-The code of \textsc{deeptrac-mini} is publicly available on GitHub (***) under GPL licence. Training's data and training itself can be reproduced with the help of the repositories scripts on a common desktop computer. 
+The code of \textsc{deeptrac-mini} is publicly available on GitHub (***) under Mit licence. Training's data and training itself can be reproduced with the help of the repositories scripts on a common desktop computer. 
 
 %%%%%%%%%%%%% Acknowledgements %%%%%%%%%%%%%
 %\footnotesize
@@ -337,7 +387,16 @@ The code of \textsc{deeptrac-mini} is publicly available on GitHub (***) under G
 \bibliography{references}
 
 %%%%%%%%%%%%  Supplementary Figures  %%%%%%%%%%%%
-%\clearpage
+\clearpage
+\section{Appendix}
+
+\begin{figure}
+    \centering
+    \includegraphics[width=0.9\linewidth]{figures/training_R_ref.png}
+    \caption{Tuning with additional mass penalty, lower learning rates for one more era.}
+    \label{fig:tuning_r}
+\end{figure}
+
 
 %%%%%%%%%%%%%%%%   End   %%%%%%%%%%%%%%%%
 %\end{multicols}  % Method B for two-column formatting (doesn't play well with line numbers), comment out if using method A

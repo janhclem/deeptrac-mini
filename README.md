@@ -118,20 +118,20 @@ for a total of **1,000 ensemble members** (≈1,000,000 time-step samples). Earl
 | Final learning rate | 3 × 10⁻⁶ | 3 × 10⁻⁷ |
 | LR schedule | Exponential decay | Exponential decay |
 | Batch size | 8 | 8 |
-| Loss function | Huber loss | Huber loss + mass-conservation penalty ($\lambda=0.001$) |
+| Loss function | Huber loss | Huber loss + mass-conservation penalty ($\lambda_m \in \{0,\, 10^{-5},\, 10^{-4}\}$) |
 | Gradient clipping | max norm = 1.0 | max norm = 1.0 |
 | Normalization | LayerNorm after each MLP layer; targets normalized to unit std | (same) |
 
-Training proceeds in two phases: an initial pilot run, followed by a fine-tuning phase (warm-started from the pilot checkpoint) that adds an explicit mass-conservation penalty term to the loss.
+Training proceeds in two phases: an initial pilot run, followed by a fine-tuning phase (warm-started from the pilot checkpoint) that adds an explicit mass-conservation penalty term to the loss. Three independent fine-tuning runs were compared, penalizing the mass deviation over the entire graph rather than per particle: no penalty ($\lambda_m=0$), a moderate penalty ($\lambda_m=10^{-5}$), and a strong penalty ($\lambda_m=10^{-4}$).
 
 ### 4.3 Results: Convergence & Validation
 
-DeepMix converges to a final **median RMSE of about 0.22**, corresponding to an estimated **Pearson correlation coefficient $R \approx 0.95$** between predicted and reference mass changes; 95% of samples reach $R > 0.90$.
+DeepMix converges to a final **median NRMSE of about 0.20**, corresponding to an estimated **Pearson correlation coefficient $R \approx 0.98$** between predicted and reference mass changes; at least 95% of samples reach $R > 0.90$.
 
 <p align="center">
-  <img src="https://github.com/janhclem/deeptrac-mini/blob/master/doc/preprint/figures/training_loss.png" alt="RMSE training progress" width="80%">
+  <img src="https://github.com/janhclem/deeptrac-mini/blob/master/doc/preprint/figures/training_loss.png" alt="NRMSE training progress" width="80%">
 </p>
-<p align="center"><em>Figure — Training progress quantified by the estimated RMSE (per-batch samples in red; running mean/median over 100 batches in magenta/green).</em></p>
+<p align="center"><em>Figure — Training progress quantified by the estimated NRMSE (per-batch samples in red; running median over 100 batches in green).</em></p>
 
 Convergence is steady for the majority of samples throughout training, although a minority of cases show markedly lower correlation. Preliminary analysis suggests these outliers coincide with particular edge cases in the training data (e.g. very sparse local neighbourhoods), though this remains a hypothesis that warrants further investigation. Training is also visibly disrupted by intermittent batches of unusually hard samples, seen as transient spikes in both the RMSE plot above and the correlation plot below.
 
@@ -140,14 +140,32 @@ Convergence is steady for the majority of samples throughout training, although 
 </p>
 <p align="center"><em>Figure — Training progress quantified by the estimated Pearson correlation coefficient (R) between predicted and reference mass changes.</em></p>
 
-Notably, **even without an explicit mass-conservation constraint**, DeepMix steadily improves mass conservation over the course of training, reaching a final conservation error on the order of **0.1% per particle**. This suggests DeepMix is not simply overfitting the training data, but is learning a physically meaningful representation of the underlying mixing operator — though the residual error remains many orders of magnitude larger than machine precision, so mass conservation is *not* exact. The fine-tuning phase (§4.2), which adds an explicit mass-conservation penalty, is intended to close this gap further.
+Notably, **even without an explicit mass-conservation constraint**, DeepMix steadily improves mass conservation over the course of training, reaching a final conservation error on the order of **0.1% per particle**. This suggests DeepMix is not simply overfitting the training data, but is learning a physically meaningful representation of the underlying mixing operator — though the residual error remains many orders of magnitude larger than machine precision, so mass conservation is *not* exact.
 
 <p align="center">
   <img src="https://github.com/janhclem/deeptrac-mini/blob/master/doc/preprint/figures/mass_balance.png" alt="Mass balance training progress" width="80%">
 </p>
 <p align="center"><em>Figure — Mean absolute mass balance per particle over the course of training.</em></p>
 
-### 4.4 Application
+### 4.4 Fine-Tuning with a Mass-Conservation Penalty
+
+To close the residual mass-conservation gap, the fine-tuning phase (§4.2) was run three times from the same pilot checkpoint, at a lower learning rate ($3\times10^{-6}$ decaying to $3\times10^{-7}$), while varying the strength of an explicit mass-conservation penalty $\lambda_m$ added to the Huber loss: no penalty, a moderate penalty ($\lambda_m = 10^{-5}$), and a strong penalty ($\lambda_m = 10^{-4}$).
+
+The moderate penalty performs best: it substantially reduces the combined loss (NRMSE + penalty) to below **0.15**, corresponding to an estimated **$R > 0.99$**, exceeding the improvement obtained from further training without a penalty. The strong penalty, by contrast, comes at the cost of a higher total loss, though this does not necessarily imply a worse NRMSE on its own.
+
+<p align="center">
+  <img src="https://github.com/janhclem/deeptrac-mini/blob/master/doc/preprint/figures/training_loss_ref.png" alt="Fine-tuning loss comparison" width="80%">
+</p>
+<p align="center"><em>Figure — Fine-tuning loss (NRMSE + mass penalty) for three mass-penalty weights.</em></p>
+
+Surprisingly, adding the mass penalty does **not** noticeably reduce the bias in the mass balance any further than continued training alone — the reduction in absolute mass deviation is essentially independent of the penalty strength applied, an unexplained result at this stage. Nevertheless, fine-tuning as a whole reduces the mass deviation to about **0.05% per particle**, down from 0.1% after the pilot phase.
+
+<p align="center">
+  <img src="https://github.com/janhclem/deeptrac-mini/blob/master/doc/preprint/figures/training_mass_ref.png" alt="Fine-tuning mass balance comparison" width="80%">
+</p>
+<p align="center"><em>Figure — Mass divergence during fine-tuning for three mass-penalty weights.</em></p>
+
+### 4.5 Application
 
 DeepMix is designed to replace the numerical mixing scheme in simulations equivalent to MINITRAC. This implementation is **edge-focused** (it predicts mass exchange along edges). Future work could explore **node-focused GNNs** to replace the advection scheme as well — an approach that could additionally enforce mass conservation as a bias correction to interpolation errors inherent in Lagrangian advection.
 
@@ -165,13 +183,19 @@ Development of the code base made extensive use of AI coding assistants (Vibe/Mi
 
 ## 6. Preprint & Case Study
 
-The methods and results summarized above are described in full in the accompanying preprint (source: [`doc/preprint/preprint-template.tex`](doc/preprint/preprint-template.tex), built on the [arxiv-style](https://github.com/kourgeorge/arxiv-style) LaTeX template for EarthArXiv-style submissions). The preprint additionally reports a small **qualitative case study**: side-by-side simulation movies of the MTPT baseline and the DeepMix emulator, deliberately left unlabeled so a reader can attempt to identify which is which — an informal Turing test in the spirit of Palmer (2016), who argued that a climate model can be considered adequate once its output becomes visually indistinguishable from observations. The double-gyre case study shows only minor deviations between emulator and baseline, with the MTPT scheme appearing slightly smoother; differences become apparent mainly in fine detail or over longer integration times.
+The methods and results summarized above are described in full in the accompanying preprint (source: [`doc/preprint/preprint-template.tex`](doc/preprint/preprint-template.tex), built on the [arxiv-style](https://github.com/kourgeorge/arxiv-style) LaTeX template for EarthArXiv-style submissions). The preprint additionally reports a small **qualitative case study**: side-by-side simulation movies of the MTPT baseline and the DeepMix emulator, deliberately left unlabeled so a reader can attempt to identify which is which — an informal Turing test in the spirit of Palmer (2016), who argued that a climate model can be considered adequate once its output becomes visually indistinguishable from observations.
+
+| MTPT baseline | DeepMix emulator |
+|---|---|
+| ![MTPT simulation](https://github.com/janhclem/deeptrac-mini/blob/master/doc/preprint/figures/simu/mass_050.png) | ![DeepMix emulation](https://github.com/janhclem/deeptrac-mini/blob/master/doc/preprint/figures/emu/mass_050.png) |
+
+The double-gyre case study shows only minor deviations between emulator and baseline, with the MTPT scheme appearing slightly smoother and more diffusive; differences become apparent mainly in fine detail or over longer integration times.
 
 ---
 
 ## 7. Limitations & Outlook
 
-- **Mass conservation is not strictly enforced.** DeepMix improves mass balance during training even without an explicit constraint, but the residual per-particle error (~0.1%) is far from machine precision. A mass-conserving architecture (e.g. one that enforces anti-symmetric exchange between particle pairs by construction) would be needed for applications with strict conservation requirements.
+- **Mass conservation is not strictly enforced.** DeepMix improves mass balance during training even without an explicit constraint, and an explicit mass-conservation penalty during fine-tuning (§4.4) roughly halves the residual error to ~0.05% per particle — but, surprisingly, this reduction appears largely independent of the penalty's strength, and the residual is still far from machine precision. A mass-conserving architecture (e.g. one that enforces anti-symmetric exchange between particle pairs by construction) would be needed for applications with strict conservation requirements.
 - **Validation so far is limited to an idealized double-gyre setup.** Generalization to geophysical flows (e.g. atmospheric or ocean mixing) has not yet been tested.
 - **Scalability of graph construction** (neighbour search, edge-feature computation) at larger particle counts and over longer integration windows remains to be characterized against the baseline MTPT implementation.
 - **A minority of low-correlation outlier samples** are not yet fully explained; the current hypothesis — that they correspond to sparse or otherwise atypical local particle configurations — has not been confirmed.
