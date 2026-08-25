@@ -183,11 +183,7 @@ Development of the code base made extensive use of AI coding assistants (Vibe/Mi
 
 ## 6. Preprint & Case Study
 
-The methods and results summarized above are described in full in the accompanying preprint (source: [`doc/preprint/preprint-template.tex`](doc/preprint/preprint-template.tex), built on the [arxiv-style](https://github.com/kourgeorge/arxiv-style) LaTeX template for EarthArXiv-style submissions). The preprint additionally reports a small **qualitative case study**: side-by-side simulation movies of the MTPT baseline and the DeepMix emulator, deliberately left unlabeled so a reader can attempt to identify which is which — an informal Turing test in the spirit of Palmer (2016), who argued that a climate model can be considered adequate once its output becomes visually indistinguishable from observations.
-
-| MTPT baseline | DeepMix emulator |
-|---|---|
-| ![MTPT simulation](https://github.com/janhclem/deeptrac-mini/blob/master/doc/preprint/figures/simu/mass_050.png) | ![DeepMix emulation](https://github.com/janhclem/deeptrac-mini/blob/master/doc/preprint/figures/emu/mass_050.png) |
+The methods and results summarized above are described in full in the accompanying preprint ([`doc/preprint/preprint-template.tex`](doc/preprint/preprint-template.tex), built on the [arxiv-style](https://github.com/kourgeorge/arxiv-style) template). The preprint additionally reports a small **qualitative case study**: side-by-side simulation movies of the MTPT baseline and the DeepMix emulator, deliberately left unlabeled so a reader can attempt to identify which is which for a first judgement of the outcome.  The simulation movies are accesible via [Sciebo Cloud](https://fz-juelich.sciebo.de/s/agJiPqWeBnwTHPS).
 
 The double-gyre case study shows only minor deviations between emulator and baseline, with the MTPT scheme appearing slightly smoother and more diffusive; differences become apparent mainly in fine detail or over longer integration times.
 
