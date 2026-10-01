@@ -62,9 +62,12 @@ class DeepMix(torch.nn.Module):
 
     Architecture follows an Encoder–Processor–Decoder paradigm:
       - Encoder:   embeds edge features into a 64-dimensional latent space.
-      - Processor: one round of message passing updating edge and node embeddings.
-      - Decoder:   projects edge embeddings back to scalar mass-exchange predictions,
-                   which are summed per node to give the net mass change dm.
+      - Processor: one round of message passing updating edge embeddings.
+      - Decoder:   projects edge embeddings back to scalar mass-exchange predictions.
+
+    The model predicts a single scalar f per undirected edge {i, j}, representing
+    the mass transferred from i to j. Mass conservation is guaranteed by
+    construction: dm_i -= f, dm_j += f, so sum(dm) = 0.
 
     Input edge features are (dx, dy, dm_mass), normalized by (lmix, lmix, m0).
     """
@@ -101,54 +104,52 @@ class DeepMix(torch.nn.Module):
         Parameters
         ----------
         data : torch_geometric.data.Data
-            Graph with node features (x), edge index, and normalized edge attributes.
+            Graph with node features (x), edge index (undirected, src < dest),
+            and normalized edge attributes.
 
         Returns
         -------
-        u : torch.Tensor, shape (n_edges, 1)
-            Per-edge mass-exchange predictions.
-        u_agg : torch.Tensor, shape (n_nodes,)
-            Net mass change per node (sum of incoming edge contributions).
+        f : torch.Tensor, shape (n_edges,)
+            Per-edge mass-exchange predictions (positive = mass flows from src to dest).
+        dm : torch.Tensor, shape (n_nodes,)
+            Net mass change per node. Guaranteed to sum to zero (mass-conserving).
         """
         x = data.x
         src, dest = data.edge_index
         edge_attr = data.edge_attr
 
-        # Encode edge features into latent space...
+        # Encode edge features into latent space
         e = self.encoder(edge_attr)
-        
-        # Initial node embedding: aggregate encoded edge features...
-        h = scatter_sum(e, dest, dim=0, dim_size=x.shape[0])
-        print(h.shape)
-        print(h)
+
+        # Initial node embedding: aggregate encoded edge features from both
+        # sources and destinations (undirected graph)
+        h = (scatter_sum(e, dest, dim=0, dim_size=x.shape[0]) +
+             scatter_sum(e, src, dim=0, dim_size=x.shape[0]))
 
         # Message passing (single iteration)
         h_src = h[src]
-        print(src)
-        print(h_src)
-        print(h_src.shape)
-        print(src.shape)
         msg = self.edge_func(self.edge_linear(e) + self.node_linear_1(h_src))
-        #msg_agg = scatter_sum(msg, dest, dim=0, dim_size=x.shape[0])
-        
+
         e = msg
-        #h = self.node_func(self.node_linear_2(h) + self.msg_linear(msg_agg))
 
-        # Decode to per-edge mass exchange, aggregate to per-node dm
-        u = self.decoder(e)
-        print(u.shape)
-        u_agg = scatter_sum(u, dest, dim=0, dim_size=x.size(0)).squeeze()
-        print(u_agg.shape)
+        # Decode to per-edge mass exchange
+        f = self.decoder(e).squeeze(-1)
 
-        return u, u_agg
+        # Anti-symmetric aggregation: dest gains f, src loses f.
+        # This guarantees sum(dm) = 0 by construction.
+        dm = (scatter_sum(f, dest, dim=0, dim_size=x.size(0)) -
+              scatter_sum(f, src, dim=0, dim_size=x.size(0)))
+
+        return f, dm
 
 
 def mix(x, m, r, m0=1.0, weights_file="./weights/deepmix.weights.0"):
     """
     Perform mixing using the deep learning emulator.
 
-    This function constructs a graph from particle positions and masses,
-    then uses the trained DeepMix GNN to predict mass changes.
+    This function constructs an undirected graph from particle positions and
+    masses, then uses the trained DeepMix GNN to predict mass changes.
+    Mass conservation is guaranteed by the anti-symmetric architecture.
 
     Parameters
     ----------
@@ -185,6 +186,11 @@ def mix(x, m, r, m0=1.0, weights_file="./weights/deepmix.weights.0"):
     f_graph = torch.from_numpy(np.concatenate([x, m[:, None]], axis=1)).float()
     pos_graph = torch.from_numpy(x).float()
     edge_index = radius_graph(pos_graph, r=r, batch=None, loop=False)
+
+    # Keep only undirected edges (src < dest) for anti-symmetric exchange
+    mask = edge_index[0] < edge_index[1]
+    edge_index = edge_index[:, mask]
+
     data_graph = Data(x=f_graph, edge_index=edge_index, pos=pos_graph)
     i, j = data_graph.edge_index
     norm = torch.tensor([r, r, m0])

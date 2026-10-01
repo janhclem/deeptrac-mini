@@ -66,7 +66,7 @@ LR_FINAL        = 0.000003
 BATCH_SIZE      = 8
 NUM_ITERATIONS  = 500_000
 USE_RESTART     = False
-LAMBDA          = 0.00  # mass-conservation penalty weight
+# LAMBDA = 0.00  # mass-conservation penalty weight (not needed: conservation is guaranteed by architecture)
 
 ## Tuning...
 #LR              = 0.000003  
@@ -106,6 +106,9 @@ f_sample      = np.concatenate([atm0_sample.x, atm0_sample.m[:, None]], axis=1)
 f_graph       = torch.from_numpy(f_sample).float()
 pos_graph     = torch.from_numpy(atm0_sample.x).float()
 edge_index    = radius_graph(pos_graph, r=2*cfg.lmix, batch=None, loop=False)
+# Keep only undirected edges (src < dest) for anti-symmetric exchange
+mask = edge_index[0] < edge_index[1]
+edge_index = edge_index[:, mask]
 data_graph    = Data(x=f_graph, edge_index=edge_index, pos=pos_graph)
 i, j          = data_graph.edge_index
 norm          = torch.tensor([2*cfg.lmix, 2*cfg.lmix, cfg.m0])
@@ -163,6 +166,9 @@ for epoch in range(epochs):
             f_graph    = torch.from_numpy(np.concatenate([atm0.x, atm0.m[:, None]], axis=1)).float()
             pos_graph  = torch.from_numpy(atm0.x).float()
             edge_index = radius_graph(pos_graph, r=2*cfg.lmix, batch=None, loop=False)
+            # Keep only undirected edges (src < dest) for anti-symmetric exchange
+            mask = edge_index[0] < edge_index[1]
+            edge_index = edge_index[:, mask]
             data_graph = Data(x=f_graph, edge_index=edge_index, pos=pos_graph)
 
             i, j = data_graph.edge_index
@@ -174,13 +180,13 @@ for epoch in range(epochs):
             dm_target = torch.from_numpy(atm1.m).float() - torch.from_numpy(atm0.m).float()
 
             loss = loss_fn(dm / DM_STD, dm_target / DM_STD)
-            #mass_penalty = (dm.sum() / DM_STD) ** 2
-            mass_penalty = (dm.sum() / (DM_STD * torch.sqrt(torch.tensor(data_graph.num_nodes, dtype=torch.float)))) ** 2
-            total_loss += loss + LAMBDA * mass_penalty
+            # Mass conservation is guaranteed by the anti-symmetric architecture,
+            # so no explicit penalty is needed.
+            total_loss += loss
             total_mse  += loss.item()
-            mass_budget += dm.sum()
+            mass_budget += dm.sum()  # should be ~0, kept for verification
 
-            print(f"loss={loss.item():.5f}  raw_penalty={mass_penalty.item():.5f}  weighted={LAMBDA*mass_penalty.item():.5f}  N={data_graph.num_nodes}")
+            print(f"loss={loss.item():.5f}  mass_budget={mass_budget.item():.2e}  N={data_graph.num_nodes}")
 
         (total_loss / len(batch_files)).backward()
         torch.nn.utils.clip_grad_norm_(deepmix.parameters(), max_norm=1.0)
